@@ -153,16 +153,16 @@ smf_bootstrap_interval <- function(x, p = 1, h, B = 250, alpha = 0.05, M = NULL)
 }
 
 #-----------------------------------------------------------------------
-# 5. Monte Carlo Simulation Driver
+# 5. Monte Carlo Simulation Driver (MODIFIED)
 #-----------------------------------------------------------------------
 
 run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
                                     alpha = 0.05, num_sims = 50, B = 250, p = 1, M = NULL) {
   error_dist <- match.arg(error_dist)
   
-  # foreach 
-  results <- foreach(i = seq_len(num_sims), .combine = rbind, .packages = c("VGAM")) %dopar% {
-    # Generate data from a non-linear autoregressive model
+  # The foreach loop now returns a data frame with all raw results
+  results_df <- foreach(i = seq_len(num_sims), .combine = rbind, .packages = c("VGAM")) %dopar% {
+    # Data generation remains the same
     eps <- if (error_dist == "Normal") {
       rnorm(n + 1, 0, 1)
     } else {
@@ -190,17 +190,19 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
     }
   }
   
+  # NEW: Calculate summary statistics from the collected data frame
   data.frame(
     n = n,
     error_dist = error_dist,
     nominal_coverage = 1 - alpha,
-    CVR = mean(results$covered, na.rm = TRUE),
-    LEN = mean(results$interval_length, na.rm = TRUE)
+    CVR = mean(results_df$covered, na.rm = TRUE),
+    LEN_mean = mean(results_df$interval_length, na.rm = TRUE),
+    LEN_sd = sd(results_df$interval_length, na.rm = TRUE) # Added standard deviation
   )
 }
 
 #-----------------------------------------------------------------------
-# 6. Main Execution Block 
+# 6. Main Execution Block (MODIFIED for new column names)
 #-----------------------------------------------------------------------
 
 num_cores <- detectCores() - 1 
@@ -215,12 +217,13 @@ clusterExport(cl, c("smf_bootstrap_interval", "draw_consecutive",
               envir = environment())
 
 param_grid <- expand.grid(
-  n = c(50),
-  error_dist = c("Normal"),
+  n = c(50, 100), # Expanded for better comparison
+  error_dist = c("Normal", "Laplace"),
   alpha = c(0.05),
   stringsAsFactors = FALSE
 )
 
+# The lapply call remains the same, as the new calculations are inside the function
 all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
   run_simulation_parallel(
     n = param_grid$n[i],
@@ -229,7 +232,7 @@ all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
     num_sims = 500,
     B = 250,
     p = 1,
-    M = floor( param_grid$n[i] /2)
+    M = floor(param_grid$n[i] / 2)
   )
 }))
 
@@ -237,5 +240,9 @@ stopCluster(cl)
 
 cat("\nSimulation Results:\n")
 print(kable(all_results %>%
-              mutate(CVR = round(CVR, 3), LEN = round(LEN, 3)),
+              mutate(
+                CVR = round(CVR, 3), 
+                LEN_mean = round(LEN_mean, 3),
+                LEN_sd = round(LEN_sd, 3) # Round the new column
+              ),
             format = "markdown"))

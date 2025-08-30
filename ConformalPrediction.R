@@ -56,6 +56,7 @@ burn_out <- 500 # Burn out numeber to remove the effects of initial value effect
 h_grid <- seq(0.5 * n_window^(-1/4), n_window^(-1/5), length.out = 400)
 alpha <- 0.05
 
+# WE ONLY CONSIDER ONE STEP AHEAD PREDICTION SO FAR
 for (step in 1:B) {
   # 生成数据：X_{t+1} = sin(X_t) + e_{t+1}
   total_length <- n_window + burn_out

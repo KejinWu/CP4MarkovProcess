@@ -137,11 +137,11 @@ dcp_prediction_interval <- function(x, h_grid, alpha = 0.05) {
 }
 
 #-----------------------------------------------------------------------
-# 5. Monte Carlo Simulation Driver
+# 5. Monte Carlo Simulation Driver (CORRECTED)
 #-----------------------------------------------------------------------
 
 run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
-                                    alpha = 0.05, num_sims = 50, burn_in = 500) {
+                                    alpha = 0.05, num_sims = 50, burn_in = 500, B = 250) {
   error_dist <- match.arg(error_dist)
   
   # The foreach loop returns a data frame with all raw results
@@ -164,8 +164,15 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
     
     x_train <- x[(burn_in + 1):total_len]
     
-    # Generate the single true next value to check coverage against
-    x_true_next <- sin(x[total_len]) + rnorm(1)
+    # --- Generate the single true next value to check coverage against ---
+    # MODIFIED: Ensure the error distribution for the true next value
+    # matches the simulation's error distribution.
+    true_error <- if (error_dist == "Normal") {
+      rnorm(B)
+    } else {
+      VGAM::rlaplace(B, location = 0, scale = 1 / sqrt(2))
+    }
+    x_true_next <- sin(x[total_len]) + true_error
     
     # Heuristic bandwidth grid
     h_grid <- seq(0.1, 1.5, length.out = 50) 
@@ -177,7 +184,7 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
     if (inherits(interval, "try-error") || is.na(interval$lower)) {
       data.frame(covered = NA, interval_length = NA)
     } else {
-      covered <- (x_true_next >= interval$lower && x_true_next <= interval$upper)
+      covered <- mean(x_true_next >= interval$lower & x_true_next <= interval$upper)
       interval_length <- interval$upper - interval$lower
       data.frame(covered = covered, interval_length = interval_length)
     }
@@ -213,7 +220,7 @@ clusterExport(cl, c("kernel_lambda", "kernel_K", "estimate_conditional_cdf",
 
 # --- Define Simulation Parameters ---
 param_grid <- expand.grid(
-  n = c(50, 100),
+  n = c(50, 100, 200),
   error_dist = c("Normal", "Laplace"),
   alpha = c(0.05, 0.10),
   stringsAsFactors = FALSE
@@ -226,7 +233,8 @@ all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
     error_dist = param_grid$error_dist[i],
     alpha = param_grid$alpha[i],
     num_sims = 500, # Number of Monte Carlo simulations
-    burn_in = 500
+    burn_in = 500,
+    B = 250
   )
 }))
 

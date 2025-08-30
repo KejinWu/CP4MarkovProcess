@@ -25,7 +25,7 @@ suppressPackageStartupMessages({
 set.seed(123)
 
 #-----------------------------------------------------------------------
-# 2. Kernel Functions (保持不变)
+# 2. Kernel Functions
 #-----------------------------------------------------------------------
 
 kernel_lambda <- function(x) {
@@ -57,9 +57,7 @@ make_train_xy <- function(x, p) {
 }
 
 compute_weights <- function(y_cond, y_train, h) {
-  U <- sweep(y_train, 2, y_cond, "-")
-  d <- sqrt(rowSums(U^2)) / h
-  kernel_K(d)
+  kernel_K((y_cond - y_train)/h)
 }
 
 estimate_conditional_cdf <- function(u, y_cond, x_train, y_train, h, h0) {
@@ -153,7 +151,7 @@ smf_bootstrap_interval <- function(x, p = 1, h, B = 250, alpha = 0.05, M = NULL)
 }
 
 #-----------------------------------------------------------------------
-# 5. Monte Carlo Simulation Driver (MODIFIED)
+# 5. Monte Carlo Simulation Driver
 #-----------------------------------------------------------------------
 
 run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
@@ -164,19 +162,22 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
   results_df <- foreach(i = seq_len(num_sims), .combine = rbind, .packages = c("VGAM")) %dopar% {
     # Data generation remains the same
     eps <- if (error_dist == "Normal") {
-      rnorm(n + 1, 0, 1)
+      rnorm(n + B, 0, 1)
     } else {
-      VGAM::rlaplace(n + 1, location = 0, scale = 1 / sqrt(2))
+      VGAM::rlaplace(n + B, location = 0, scale = 1 / sqrt(2))
     }
     
-    x <- numeric(n + 1)
+    x <- numeric(n)
+    x_true_next = numeric(B)
     x[1] <- rnorm(1)
-    for (t in 1:n) {
+    for (t in 1:(n - 1)) {
       x[t + 1] <- sin(x[t]) + eps[t]
     }
-    
     x_train <- x[1:n]
-    x_true_next <- x[n + 1]
+    
+    for (t in 1:B){
+      x_true_next[t] <- sin(x[n]) + eps[n+t]
+    }
     h <- 1.06 * sd(x_train) * n^(-1/5)
     
     result <- try(smf_bootstrap_interval(x_train, p, h, B, alpha, M), silent = TRUE)
@@ -184,7 +185,7 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
     if (inherits(result, "try-error")) {
       data.frame(covered = NA, interval_length = NA)
     } else {
-      covered <- (x_true_next >= result$lower && x_true_next <= result$upper)
+      covered <- mean(x_true_next >= result$lower & x_true_next <= result$upper)
       interval_length <- result$upper - result$lower
       data.frame(covered = covered, interval_length = interval_length)
     }
@@ -202,7 +203,7 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
 }
 
 #-----------------------------------------------------------------------
-# 6. Main Execution Block (MODIFIED for new column names)
+# 6. Main Execution Block
 #-----------------------------------------------------------------------
 
 num_cores <- detectCores() - 1 
@@ -217,9 +218,9 @@ clusterExport(cl, c("smf_bootstrap_interval", "draw_consecutive",
               envir = environment())
 
 param_grid <- expand.grid(
-  n = c(50, 100), # Expanded for better comparison
+  n = c(50, 100, 200), # Expanded for better comparison
   error_dist = c("Normal", "Laplace"),
-  alpha = c(0.05),
+  alpha = c(0.05, 0.1),
   stringsAsFactors = FALSE
 )
 
@@ -234,7 +235,8 @@ all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
     p = 1,
     M = floor(param_grid$n[i] / 2)
   )
-}))
+}
+))
 
 stopCluster(cl)
 

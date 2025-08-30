@@ -1,116 +1,245 @@
-# --- smooth CDF: clamp to [-2,2] then Phi ---
-lambda <- function(x) {
-  z <- pmax(-2, pmin(2, x))
-  pnorm(z)
+## ======================================================================
+## Distributional Conformal Prediction (DCP) for Markov(p=1)
+## ======================================================================
+
+#-----------------------------------------------------------------------
+# 1. Package Dependencies and Setup
+#-----------------------------------------------------------------------
+
+# Check and install packages if not present
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("knitr")) install.packages("knitr")
+if (!require("doParallel")) install.packages("doParallel")
+if (!require("foreach")) install.packages("foreach")
+
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(knitr)
+  library(doParallel)
+  library(foreach)
+})
+
+# Set a random seed for reproducibility
+set.seed(123)
+
+#-----------------------------------------------------------------------
+# 2. Kernel and CDF Helper Functions
+#-----------------------------------------------------------------------
+
+# Smoothed Heaviside function using clamped Normal CDF
+kernel_lambda <- function(x) {
+  clamped_x <- pmax(-2, pmin(2, x))
+  pnorm(clamped_x)
 }
 
-K <- function(x) dnorm(x)
+# Standard Gaussian kernel
+kernel_K <- function(u) {
+  dnorm(u)
+}
 
-# 条件CDF估计器  F̂(x | y)  for Markov(p=1)
-# series: 训练序列（数值向量），长度 m >= 2
-# x_val:  目标值 (标量)    ; y_cond: 条件值 (标量)
-D <- function(x_val, y_cond, h, series, h0 = h^2, eps = 1e-12) {
+# Conditional CDF estimator: F̂(x | y) for Markov(p=1)
+estimate_conditional_cdf <- function(x_val, y_cond, h, series, h0 = h^2) {
   m <- length(series)
-  if (m < 2) stop("series too short for p=1")
+  if (m < 2) stop("Series is too short for p=1.")
   
-  # 训练对：x_i = series[2:m] ; y_i = series[1:(m-1)]
   x_train <- series[2:m]
   y_train <- series[1:(m-1)]
   
-  w <- K((y_cond - y_train) / h)
-  sw <- sum(w)
-  if (!is.finite(sw) || sw < eps) return(mean(x_train <= x_val))
+  weights <- kernel_K((y_cond - y_train) / h)
+  sum_weights <- sum(weights)
   
-  num <- sum(w * lambda((x_val - x_train) / h0))
-  num / sw
+  if (!is.finite(sum_weights) || sum_weights < 1e-12) {
+    return(mean(x_train <= x_val))
+  }
+  
+  numerator <- sum(weights * kernel_lambda((x_val - x_train) / h0))
+  numerator / sum_weights
 }
 
-# 计算 v_t = F̂(X_t | X_{t-1})，并做 KS 选带宽（p=1）
-select <- function(series, h_grid) {
+# Bandwidth selection via Kolmogorov-Smirnov test p-value maximization
+select_bandwidth_ks <- function(series, h_grid) {
   m <- length(series)
-  if (m < 3) stop("series too short")
+  if (m < 3) stop("Series is too short for bandwidth selection.")
   
-  ks_p <- numeric(length(h_grid))
-  for (j in seq_along(h_grid)) {
-    h  <- h_grid[j]
+  ks_p_values <- vapply(h_grid, function(h) {
     h0 <- h^2
-    v  <- numeric(m - 1)
-    # t = 2..m  =>  v_{t-1} = F̂( X_t | X_{t-1} )
+    v <- numeric(m - 1)
     for (t in 2:m) {
-      v[t - 1] <- D(x_val = series[t], y_cond = series[t - 1], h = h,
-                    series = series, h0 = h0)
+      v[t - 1] <- estimate_conditional_cdf(
+        x_val = series[t], 
+        y_cond = series[t - 1], 
+        h = h, 
+        series = series, 
+        h0 = h0
+      )
     }
-    v <- pmax(1e-6, pmin(1 - 1e-6, v))  # 稳定
-    ks_p[j] <- suppressWarnings(ks.test(v, "punif")$p.value)
-  }
-  h_grid[ which.max(ks_p) ]
+    v <- pmax(1e-6, pmin(1 - 1e-6, v)) # Stabilize for ks.test
+    suppressWarnings(ks.test(v, "punif")$p.value)
+  }, numeric(1))
+  
+  h_grid[which.max(ks_p_values)]
 }
 
-set.seed(1)
-B <- 500
-result  <- numeric(B)  # 覆盖率
-result2 <- numeric(B)  # 区间长度
+#-----------------------------------------------------------------------
+# 4. Main DCP Prediction Interval Function
+#-----------------------------------------------------------------------
 
-n_window <- 50 # Window size used to do training
-burn_out <- 500 # Burn out numeber to remove the effects of initial value effects
-h_grid <- seq(0.5 * n_window^(-1/4), n_window^(-1/5), length.out = 400)
-alpha <- 0.05
-
-# WE ONLY CONSIDER ONE STEP AHEAD PREDICTION SO FAR
-for (step in 1:B) {
-  # 生成数据：X_{t+1} = sin(X_t) + e_{t+1}
-  total_length <- n_window + burn_out
-  e <- rnorm(total_length)
-  x <- numeric(total_length); x[1] <- 0
-  for (i in 2:total_length) x[i] <- sin(x[i - 1]) + e[i] 
+dcp_prediction_interval <- function(x, h_grid, alpha = 0.05) {
   
-  data <- x[(burn_out + 1) : (burn_out + n_window)]  # 训练段，长度 n
-  # 测试点用于估计经验覆盖（只是评估用）
-  ytest <- rnorm(1000) + sin(data[burn_out + n_window]) # Use 1000 pseduo future values to test the coverage rate
+  n <- length(x)
   
-  # 网格候选
-  ytrial <- seq(-1.25 * max(abs(data)), 1.25 * max(abs(data)), length.out = 100)
+  # --- Optimized Bandwidth Selection (done once) ---
+  h_sel <- select_bandwidth_ks(x, h_grid)
+  h0_sel <- h_sel^2
   
-  # —— DCP: 对每个候选 y 构造“增广数据”并计算 v-rank —— #
+  # --- Candidate Grid for the next value ---
+  # Heuristic grid centered around a simple forecast
+  last_val <- x[n]
+  forecast_center <- sin(last_val)
+  ytrial <- seq(forecast_center - 4, forecast_center + 4, length.out = 100)
+  
   yconfidence <- c()
+  
   for (y in ytrial) {
-    data_aug <- c(data, y)          # 增广到长度 n+1
-    n_aug    <- length(data_aug)
+    x_aug <- c(x, y)
+    n_aug <- n + 1
     
-    # 为增广数据选择带宽（也可复用原 h，这里随增广更新）
-    h_sel <- select(data_aug, h_grid)
-    h0_sel <- h_sel^2
+    # Compute v-statistics for the augmented series using the pre-selected bandwidth
+    v_stats <- vapply(2:n_aug, function(t) {
+      estimate_conditional_cdf(
+        x_val = x_aug[t], 
+        y_cond = x_aug[t - 1], 
+        h = h_sel, 
+        series = x_aug, 
+        h0 = h0_sel
+      )
+    }, numeric(1))
     
-    # 计算增广数据上的 v 统计量（t = 2..n+1）
-    v <- numeric(n_aug - 1)
-    for (t in 2:n_aug) {
-      v[t - 1] <- D(x_val = data_aug[t], y_cond = data_aug[t - 1],
-                    h = h_sel, series = data_aug, h0 = h0_sel)
+    v_stats <- pmax(1e-6, pmin(1 - 1e-6, v_stats))
+    
+    # The v-statistic for the candidate point y
+    v_new <- v_stats[n_aug - 1] 
+    
+    # Calculate the one-sided p-value based on rank
+    p_value <- mean(v_stats >= v_new)
+    
+    if (p_value > alpha) {
+      yconfidence <- c(yconfidence, y)
     }
-    v <- pmax(1e-6, pmin(1 - 1e-6, v))
-    
-    # DCP 的 p-value（rank-based；可选两端或一端）
-    v_new <- v[n_aug - 1]                 # 最后一对 (y | data[n])
-    pval  <- mean(v >= v_new)             # 单侧：大于等于
-    if (pval > alpha) yconfidence <- c(yconfidence, y)
   }
   
-  # 记录覆盖与长度
   if (length(yconfidence) > 0) {
-    result[step]  <- mean(ytest <= max(yconfidence) & ytest >= min(yconfidence))
-    result2[step] <- max(yconfidence) - min(yconfidence)
+    interval <- range(yconfidence)
+    list(lower = interval[1], upper = interval[2])
   } else {
-    result[step]  <- NA_real_
-    result2[step] <- NA_real_
+    list(lower = NA, upper = NA)
   }
 }
 
-cat("Coverage (mean):", mean(result,  na.rm = TRUE), "\n")
-cat("Length   (mean):", mean(result2, na.rm = TRUE), "\n")
-cat("Length     (sd):",   sd(result2, na.rm = TRUE), "\n")
+#-----------------------------------------------------------------------
+# 5. Monte Carlo Simulation Driver
+#-----------------------------------------------------------------------
 
+run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
+                                    alpha = 0.05, num_sims = 50, burn_in = 500) {
+  error_dist <- match.arg(error_dist)
+  
+  # The foreach loop returns a data frame with all raw results
+  results_df <- foreach(i = seq_len(num_sims), .combine = rbind) %dopar% {
+    
+    # --- Generate Data ---
+    total_len <- n + burn_in
+    eps <- if (error_dist == "Normal") {
+      rnorm(total_len)
+    } else {
+      # Need to load VGAM on the worker nodes
+      VGAM::rlaplace(total_len, location = 0, scale = 1 / sqrt(2))
+    }
+    
+    x <- numeric(total_len)
+    x[1] <- rnorm(1)
+    for (t in 2:total_len) {
+      x[t] <- sin(x[t - 1]) + eps[t]
+    }
+    
+    x_train <- x[(burn_in + 1):total_len]
+    
+    # Generate the single true next value to check coverage against
+    x_true_next <- sin(x[total_len]) + rnorm(1)
+    
+    # Heuristic bandwidth grid
+    h_grid <- seq(0.1, 1.5, length.out = 50) 
+    
+    # --- Get Prediction Interval ---
+    interval <- try(dcp_prediction_interval(x_train, h_grid, alpha), silent = TRUE)
+    
+    # --- Record Results ---
+    if (inherits(interval, "try-error") || is.na(interval$lower)) {
+      data.frame(covered = NA, interval_length = NA)
+    } else {
+      covered <- (x_true_next >= interval$lower && x_true_next <= interval$upper)
+      interval_length <- interval$upper - interval$lower
+      data.frame(covered = covered, interval_length = interval_length)
+    }
+  }
+  
+  # --- Aggregate and Return Summary Statistics ---
+  data.frame(
+    n = n,
+    error_dist = error_dist,
+    nominal_coverage = 1 - alpha,
+    CVR = mean(results_df$covered, na.rm = TRUE),
+    LEN_mean = mean(results_df$interval_length, na.rm = TRUE),
+    LEN_sd = sd(results_df$interval_length, na.rm = TRUE)
+  )
+}
 
+#-----------------------------------------------------------------------
+# 6. Main Execution Block
+#-----------------------------------------------------------------------
 
+# --- Setup Parallel Backend ---
+num_cores <- detectCores() - 1 
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+cat(sprintf("Registered parallel backend with %d cores.\n", getDoParWorkers()))
 
+# Export necessary functions and packages to the workers
+clusterEvalQ(cl, {
+  library(VGAM) # Make sure VGAM is available on each worker for Laplace dist
+})
+clusterExport(cl, c("kernel_lambda", "kernel_K", "estimate_conditional_cdf", 
+                    "select_bandwidth_ks", "dcp_prediction_interval"))
 
+# --- Define Simulation Parameters ---
+param_grid <- expand.grid(
+  n = c(50, 100),
+  error_dist = c("Normal", "Laplace"),
+  alpha = c(0.05, 0.10),
+  stringsAsFactors = FALSE
+)
 
+# --- Run All Simulations ---
+all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
+  run_simulation_parallel(
+    n = param_grid$n[i],
+    error_dist = param_grid$error_dist[i],
+    alpha = param_grid$alpha[i],
+    num_sims = 500, # Number of Monte Carlo simulations
+    burn_in = 500
+  )
+}))
+
+# --- Stop Cluster ---
+stopCluster(cl)
+
+# --- Print Final Results ---
+cat("\nDCP Simulation Results:\n")
+print(kable(all_results %>%
+              mutate(
+                CVR = round(CVR, 3), 
+                LEN_mean = round(LEN_mean, 3),
+                LEN_sd = round(LEN_sd, 3)
+              ) %>%
+              arrange(error_dist, nominal_coverage, n),
+            format = "markdown"))

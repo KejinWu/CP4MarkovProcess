@@ -7,12 +7,14 @@
 #-----------------------------------------------------------------------
 
 # Check and install packages if not present
+if (!require("VGAM")) install.packages("VGAM")
 if (!require("dplyr")) install.packages("dplyr")
 if (!require("knitr")) install.packages("knitr")
 if (!require("doParallel")) install.packages("doParallel")
 if (!require("foreach")) install.packages("foreach")
 
 suppressPackageStartupMessages({
+  library(VGAM)
   library(dplyr)
   library(knitr)
   library(doParallel)
@@ -165,8 +167,6 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
     x_train <- x[(burn_in + 1):total_len]
     
     # --- Generate the single true next value to check coverage against ---
-    # MODIFIED: Ensure the error distribution for the true next value
-    # matches the simulation's error distribution.
     true_error <- if (error_dist == "Normal") {
       rnorm(B)
     } else {

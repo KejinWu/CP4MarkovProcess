@@ -226,6 +226,7 @@ param_grid <- expand.grid(
   stringsAsFactors = FALSE
 )
 
+
 # --- Run All Simulations ---
 all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
   run_simulation_parallel(

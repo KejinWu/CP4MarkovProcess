@@ -224,6 +224,7 @@ param_grid <- expand.grid(
   stringsAsFactors = FALSE
 )
 
+
 # The lapply call remains the same, as the new calculations are inside the function
 all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
   run_simulation_parallel(

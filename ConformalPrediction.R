@@ -104,7 +104,7 @@ dcp_prediction_interval <- function(x, p = 1, h_grid, alpha = 0.05) {
     n_aug <- n + 1
     
     # Compute v-statistics for the augmented series using the pre-selected bandwidth
-    v_stats <- vapply(2:n_aug, function(t) {
+    v_stats <- vapply((p+1):n_aug, function(t) {
       estimate_conditional_cdf(
         x_val = x_aug[t], 
         y_cond = x_aug[t - p], 

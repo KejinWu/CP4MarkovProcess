@@ -1,5 +1,5 @@
 ## ======================================================================
-## Conformal / SMF for Markov(p): one-file runnable script
+## Smoothed Model-free Prediction (SMF) for Markov(p=1)
 ## ======================================================================
 
 #-----------------------------------------------------------------------
@@ -21,8 +21,6 @@ suppressPackageStartupMessages({
   library(foreach)
 })
 
-# Set a random seed for reproducibility
-set.seed(123)
 
 #-----------------------------------------------------------------------
 # 2. Kernel Functions
@@ -155,29 +153,38 @@ smf_bootstrap_interval <- function(x, p = 1, h, B = 250, alpha = 0.05, M = NULL)
 #-----------------------------------------------------------------------
 
 run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
-                                    alpha = 0.05, num_sims = 50, B = 250, p = 1, M = NULL) {
+                                    alpha = 0.05, num_sims = 50, burn_in = 500, B = 250, p = 1, M = NULL) {
   error_dist <- match.arg(error_dist)
   
   # The foreach loop now returns a data frame with all raw results
   results_df <- foreach(i = seq_len(num_sims), .combine = rbind, .packages = c("VGAM")) %dopar% {
-    # Data generation remains the same
+
+    # --- Generate Data ---
+    set.seed(i)
+    total_len <- n + burn_in
     eps <- if (error_dist == "Normal") {
-      rnorm(n + B, 0, 1)
+      rnorm(total_len)
     } else {
-      VGAM::rlaplace(n + B, location = 0, scale = 1 / sqrt(2))
+      # Need to load VGAM on the worker nodes
+      VGAM::rlaplace(total_len, location = 0, scale = 1 / sqrt(2))
     }
     
-    x <- numeric(n)
-    x_true_next = numeric(B)
+    x <- numeric(total_len)
     x[1] <- rnorm(1)
-    for (t in 1:(n - 1)) {
-      x[t + 1] <- sin(x[t]) + eps[t]
+    for (t in 2:total_len) {
+      x[t] <- sin(x[t - 1]) + eps[t]
     }
-    x_train <- x[1:n]
     
-    for (t in 1:B){
-      x_true_next[t] <- sin(x[n]) + eps[n+t]
+    x_train <- x[(burn_in + 1):total_len]
+    
+    # --- Generate the single true next value to check coverage against ---
+    true_error <- if (error_dist == "Normal") {
+      rnorm(B)
+    } else {
+      VGAM::rlaplace(B, location = 0, scale = 1 / sqrt(2))
     }
+    x_true_next <- sin(x[total_len]) + true_error
+    
     h <- 1.06 * sd(x_train) * n^(-1/5)
     
     result <- try(smf_bootstrap_interval(x_train, p, h, B, alpha, M), silent = TRUE)

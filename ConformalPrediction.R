@@ -21,9 +21,6 @@ suppressPackageStartupMessages({
   library(foreach)
 })
 
-# Set a random seed for reproducibility
-set.seed(123)
-
 #-----------------------------------------------------------------------
 # 2. Kernel and CDF Helper Functions
 #-----------------------------------------------------------------------
@@ -59,17 +56,17 @@ estimate_conditional_cdf <- function(x_val, y_cond, h, series, h0 = h^2) {
 }
 
 # Bandwidth selection via Kolmogorov-Smirnov test p-value maximization
-select_bandwidth_ks <- function(series, h_grid) {
+select_bandwidth_ks <- function(series, p,  h_grid) {
   m <- length(series)
   if (m < 3) stop("Series is too short for bandwidth selection.")
   
   ks_p_values <- vapply(h_grid, function(h) {
     h0 <- h^2
-    v <- numeric(m - 1)
-    for (t in 2:m) {
-      v[t - 1] <- estimate_conditional_cdf(
+    v <- numeric(m - p)
+    for (t in (p+1):m) {
+      v[t - p] <- estimate_conditional_cdf(
         x_val = series[t], 
-        y_cond = series[t - 1], 
+        y_cond = series[t - p], 
         h = h, 
         series = series, 
         h0 = h0
@@ -86,12 +83,12 @@ select_bandwidth_ks <- function(series, h_grid) {
 # 4. Main DCP Prediction Interval Function
 #-----------------------------------------------------------------------
 
-dcp_prediction_interval <- function(x, h_grid, alpha = 0.05) {
+dcp_prediction_interval <- function(x, p = 1, h_grid, alpha = 0.05) {
   
   n <- length(x)
   
   # --- Optimized Bandwidth Selection (done once) ---
-  h_sel <- select_bandwidth_ks(x, h_grid)
+  h_sel <- select_bandwidth_ks(x, p, h_grid)
   h0_sel <- h_sel^2
   
   # --- Candidate Grid for the next value ---
@@ -110,7 +107,7 @@ dcp_prediction_interval <- function(x, h_grid, alpha = 0.05) {
     v_stats <- vapply(2:n_aug, function(t) {
       estimate_conditional_cdf(
         x_val = x_aug[t], 
-        y_cond = x_aug[t - 1], 
+        y_cond = x_aug[t - p], 
         h = h_sel, 
         series = x_aug, 
         h0 = h0_sel
@@ -143,13 +140,14 @@ dcp_prediction_interval <- function(x, h_grid, alpha = 0.05) {
 #-----------------------------------------------------------------------
 
 run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
-                                    alpha = 0.05, num_sims = 50, burn_in = 500, B = 250) {
+                                    alpha = 0.05, num_sims = 50, burn_in = 500, B = 250,  p = 1) {
   error_dist <- match.arg(error_dist)
   
   # The foreach loop returns a data frame with all raw results
-  results_df <- foreach(i = seq_len(num_sims), .combine = rbind) %dopar% {
+  results_df <- foreach(i = seq_len(num_sims), .combine = rbind,.packages = c("VGAM")) %dopar% {
     
     # --- Generate Data ---
+    set.seed(i)
     total_len <- n + burn_in
     eps <- if (error_dist == "Normal") {
       rnorm(total_len)
@@ -178,7 +176,7 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
     h_grid <- seq(0.1, 1.5, length.out = 50) 
     
     # --- Get Prediction Interval ---
-    interval <- try(dcp_prediction_interval(x_train, h_grid, alpha), silent = TRUE)
+    interval <- try(dcp_prediction_interval(x_train, p, h_grid, alpha), silent = TRUE)
     
     # --- Record Results ---
     if (inherits(interval, "try-error") || is.na(interval$lower)) {
@@ -235,7 +233,8 @@ all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
     alpha = param_grid$alpha[i],
     num_sims = 500, # Number of Monte Carlo simulations
     burn_in = 500,
-    B = 250
+    B = 250,
+    p = 1
   )
 }))
 

@@ -239,6 +239,7 @@ all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
     error_dist = param_grid$error_dist[i],
     alpha = param_grid$alpha[i],
     num_sims = 500,
+    burn_in = 500,
     B = 250,
     p = 1,
     M = floor(param_grid$n[i] / 2)

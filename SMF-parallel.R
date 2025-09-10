@@ -12,6 +12,7 @@ if (!require("dplyr")) install.packages("dplyr")
 if (!require("knitr")) install.packages("knitr")
 if (!require("doParallel")) install.packages("doParallel")
 if (!require("foreach")) install.packages("foreach")
+if (!require("np")) install.packages("np")
 
 suppressPackageStartupMessages({
   library(VGAM)
@@ -19,6 +20,7 @@ suppressPackageStartupMessages({
   library(knitr)
   library(doParallel)
   library(foreach)
+  library(np)
 })
 
 
@@ -110,7 +112,7 @@ compute_transformed_v <- function(x, p, h, h0) {
 # 4. Main SMF Bootstrap Function
 #-----------------------------------------------------------------------
 
-smf_bootstrap_interval <- function(x, h, h_0, p = 1, B = 250, alpha = 0.05, M = NULL) {
+smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   n <- length(x)
   if (n <= p + 1) stop("Time series is too short.")
   if (is.null(M)) M <- max(p, floor(0.5 * n))
@@ -146,10 +148,14 @@ smf_bootstrap_interval <- function(x, h, h_0, p = 1, B = 250, alpha = 0.05, M = 
     }, numeric(1)))
     roots[b] <- y_star_n1 - x_tilde_star_n1
   }
-  quantiles <- quantile(roots, c(alpha / 2, 1 - alpha / 2), na.rm = TRUE)
+  quantiles_90 <- quantile(roots, c(0.1 / 2, 1 - 0.1 / 2), na.rm = TRUE)
+  quantiles_95 <- quantile(roots, c(0.05 / 2, 1 - 0.05 / 2), na.rm = TRUE)
+  
   list(
-    lower = x_tilde_n1 + quantiles[1],
-    upper = x_tilde_n1 + quantiles[2],
+    lower_90 = x_tilde_n1 + quantiles_90[1],
+    upper_90 = x_tilde_n1 + quantiles_90[2],
+    lower_95 = x_tilde_n1 + quantiles_95[1],
+    upper_95 = x_tilde_n1 + quantiles_95[2],
     x_tilde = x_tilde_n1,
     roots = roots
   )
@@ -167,7 +173,7 @@ smf_bootstrap_interval <- function(x, h, h_0, p = 1, B = 250, alpha = 0.05, M = 
 
 
 run_simulation_parallel_MF <- function(n, error_dist = c("Normal", "Laplace"),
-                                    alpha = 0.05, num_sims = 50, burn_in = 500, S = 5000, B = 250, p = 1, M = NULL) {
+                                     num_sims = 50, burn_in = 500, S = 5000, B = 250, p = 1, M = NULL) {
   error_dist <- match.arg(error_dist)
   
   # The foreach loop now returns a data frame with all raw results
@@ -210,17 +216,22 @@ run_simulation_parallel_MF <- function(n, error_dist = c("Normal", "Laplace"),
     data <- data.frame(x_train, y_train)
     h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
     h_x = h_cv_ls$ybw
-    h_y = h_cv_ls$xbw   # NOTE we define x as y; SO ybw is corresponding with h_x i.e., h
+    h_y = h_cv_ls$xbw   
+    print(h_y)
+    # NOTE we define x as y; SO ybw is corresponding with h_x i.e., h
     # Select the bandwidth by cv.ls
     
-    result <- try(smf_bootstrap_interval(all_x, p, h = h_x, h_0 = h_y, B = B, alpha, M = M), silent = TRUE)
+    result <- try(smf_bootstrap_interval(all_x, p, h = h_x, h0 = h_y, B = B, M = M), silent = TRUE)
     
     if (inherits(result, "try-error")) {
       data.frame(covered = NA, interval_length = NA)
     } else {
-      covered <- mean(x_true_next >= result$lower & x_true_next <= result$upper)
-      interval_length <- result$upper - result$lower
-      data.frame(covered = covered, interval_length = interval_length)
+      covered_90 <- mean(x_true_next >= result$lower_90 & x_true_next <= result$upper_90)
+      interval_length_90 <- result$upper_90 - result$lower_90
+      covered_95 <- mean(x_true_next >= result$lower_95 & x_true_next <= result$upper_95)
+      interval_length_95 <- result$upper_95 - result$lower_95
+      data.frame(covered_90 = covered_90, interval_length_90 = interval_length_90,
+                 covered_95 = covered_95, interval_length_95 = interval_length_95)
     }
   }
   
@@ -228,10 +239,12 @@ run_simulation_parallel_MF <- function(n, error_dist = c("Normal", "Laplace"),
   data.frame(
     n = n,
     error_dist = error_dist,
-    nominal_coverage = 1 - alpha,
-    CVR = mean(results_df$covered, na.rm = TRUE),
-    LEN_mean = mean(results_df$interval_length, na.rm = TRUE),
-    LEN_sd = sd(results_df$interval_length, na.rm = TRUE) # Added standard deviation
+    CVR_90 = mean(results_df$covered_90, na.rm = TRUE),
+    CVR_95 = mean(results_df$covered_95, na.rm = TRUE),
+    LEN_mean_90 = mean(results_df$interval_length_90, na.rm = TRUE),
+    LEN_mean_95 = mean(results_df$interval_length_95, na.rm = TRUE),
+    LEN_sd_90 = sd(results_df$interval_length_90, na.rm = TRUE),
+    LEN_sd_95 = sd(results_df$interval_length_95, na.rm = TRUE) # Added standard deviation
   )
 }
 
@@ -247,24 +260,24 @@ cat(sprintf("Registered parallel backend with %d cores.\n", getDoParWorkers()))
 clusterExport(cl, c("smf_bootstrap_interval", "draw_consecutive",
                     "make_train_xy", "compute_weights",
                     "estimate_conditional_cdf", "inverse_conditional_cdf",
-                    "compute_transformed_v", "kernel_lambda", "kernel_K"),
+                    "compute_transformed_v", "kernel_lambda", "kernel_K", "npcdistbw"),
               envir = environment())
 
 param_grid <- expand.grid(
   n = c(50, 100, 200), # Expanded for better comparison
   error_dist = c("Normal", "Laplace"),
-  alpha = c(0.05, 0.1),
+  #alpha = c(0.05, 0.1),
   stringsAsFactors = FALSE
 )
 
 
 # The lapply call remains the same, as the new calculations are inside the function
 all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
+  print(paste("Run setting n =",param_grid$n[i],"error_dist = ",param_grid$error_dist[i], sep = " "))
   run_simulation_parallel_MF(
     n = param_grid$n[i],
     error_dist = param_grid$error_dist[i],
-    alpha = param_grid$alpha[i],
-    num_sims = 500,
+    num_sims = 5,
     burn_in = 500,
     B = 250,
     S = 5000,
@@ -276,11 +289,15 @@ all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
 
 stopCluster(cl)
 
-cat("\nSimulation Results:\n")
-print(kable(all_results %>%
-              mutate(
-                CVR = round(CVR, 3), 
-                LEN_mean = round(LEN_mean, 3),
-                LEN_sd = round(LEN_sd, 3) # Round the new column
-              ),
-            format = "markdown"))
+# cat("\nSimulation Results:\n")
+# print(kable(all_results %>%
+#               mutate(
+#                 CVR = round(CVR, 3), 
+#                 LEN_mean = round(LEN_mean, 3),
+#                 LEN_sd = round(LEN_sd, 3) # Round the new column
+#               ),
+#             format = "markdown"))
+# 
+# 
+
+

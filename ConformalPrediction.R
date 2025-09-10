@@ -83,7 +83,7 @@ select_bandwidth_ks <- function(series, p,  h_grid) {
 # 4. Main DCP Prediction Interval Function
 #-----------------------------------------------------------------------
 
-dcp_prediction_interval <- function(x, p = 1, h_grid, alpha = 0.05) {
+dcp_prediction_interval <- function(x, p = 1, h_grid) {
   
   n <- length(x)
   
@@ -97,7 +97,8 @@ dcp_prediction_interval <- function(x, p = 1, h_grid, alpha = 0.05) {
   forecast_center <- sin(last_val)
   ytrial <- seq(forecast_center - 4, forecast_center + 4, length.out = 100)
   
-  yconfidence <- c()
+  yconfidence_90 <- c()
+  yconfidence_95 <- c()
   
   for (y in ytrial) {
     x_aug <- c(x, y)
@@ -122,17 +123,29 @@ dcp_prediction_interval <- function(x, p = 1, h_grid, alpha = 0.05) {
     # Calculate the one-sided p-value based on rank
     p_value <- mean(v_stats >= v_new)
     
-    if (p_value > alpha) {
-      yconfidence <- c(yconfidence, y)
+    if (p_value > 0.05) {
+      yconfidence_95 <- c(yconfidence_95, y)
+    }
+    if (p_value > 0.1) {
+      yconfidence_90 <- c(yconfidence_90, y)
     }
   }
   
-  if (length(yconfidence) > 0) {
-    interval <- range(yconfidence)
-    list(lower = interval[1], upper = interval[2])
+  if (length(yconfidence_95) > 0) {
+    interval_95 <- range(yconfidence_95)
+    list_95 = list(lower_95 = interval_95[1], upper_95 = interval_95[2])
   } else {
-    list(lower = NA, upper = NA)
+    list_95 = list(lower_95 = NA, upper_95 = NA)
   }
+  
+  if (length(yconfidence_90) > 0) {
+    interval_90 <- range(yconfidence_90)
+    list_90 = list(lower_90 = interval_90[1], upper_90 = interval_90[2])
+  } else {
+    list_90 = list(lower_90 = NA, upper_90 = NA)
+  }
+  
+  return(c(list_90,list_95))
 }
 
 #-----------------------------------------------------------------------
@@ -140,8 +153,8 @@ dcp_prediction_interval <- function(x, p = 1, h_grid, alpha = 0.05) {
 #-----------------------------------------------------------------------
 
 run_simulation_parallel_DCP <- function(n, error_dist = c("Normal", "Laplace"),
-                                    alpha = 0.05, num_sims = 50, S = 5000, burn_in = 500, B = 250,  p = 1) {
-  error_dist <- match.arg(error_dist)
+                                     num_sims = 50, S = 5000, burn_in = 500, B = 250,  p = 1) {
+  #error_dist <- match.arg(error_dist)
   
   # The foreach loop returns a data frame with all raw results
   results_df <- foreach(i = seq_len(num_sims), .combine = rbind,.packages = c("VGAM")) %dopar% {
@@ -176,15 +189,18 @@ run_simulation_parallel_DCP <- function(n, error_dist = c("Normal", "Laplace"),
     h_grid <- seq(0.1, 1.5, length.out = 50) 
     
     # --- Get Prediction Interval ---
-    interval <- try(dcp_prediction_interval(x_train, p, h_grid, alpha), silent = TRUE)
+    interval <- try(dcp_prediction_interval(x_train, p, h_grid), silent = TRUE)
     
     # --- Record Results ---
-    if (inherits(interval, "try-error") || is.na(interval$lower)) {
+    if (inherits(interval, "try-error") || is.na(interval$lower_90)) {
       data.frame(covered = NA, interval_length = NA)
     } else {
-      covered <- mean(x_true_next >= interval$lower & x_true_next <= interval$upper)
-      interval_length <- interval$upper - interval$lower
-      data.frame(covered = covered, interval_length = interval_length)
+      covered_90 <- mean(x_true_next >= interval$lower_90 & x_true_next <= interval$upper_90)
+      interval_length_90 <- interval$upper_90 - interval$lower_90
+      covered_95 <- mean(x_true_next >= interval$lower_95 & x_true_next <= interval$upper_95)
+      interval_length_95 <- interval$upper_95 - interval$lower_95
+      data.frame(covered_90 = covered_90, interval_length_90 = interval_length_90,
+                 covered_95 = covered_95, interval_length_95 = interval_length_95)
     }
   }
   
@@ -192,10 +208,12 @@ run_simulation_parallel_DCP <- function(n, error_dist = c("Normal", "Laplace"),
   data.frame(
     n = n,
     error_dist = error_dist,
-    nominal_coverage = 1 - alpha,
-    CVR = mean(results_df$covered, na.rm = TRUE),
-    LEN_mean = mean(results_df$interval_length, na.rm = TRUE),
-    LEN_sd = sd(results_df$interval_length, na.rm = TRUE)
+    CVR_90 = mean(results_df$covered_90, na.rm = TRUE),
+    CVR_95 = mean(results_df$covered_95, na.rm = TRUE),
+    LEN_mean_90 = mean(results_df$interval_length_90, na.rm = TRUE),
+    LEN_mean_95 = mean(results_df$interval_length_95, na.rm = TRUE),
+    LEN_sd_90 = sd(results_df$interval_length_90, na.rm = TRUE),
+    LEN_sd_95 = sd(results_df$interval_length_95, na.rm = TRUE) # Added standard deviation
   )
 }
 
@@ -220,18 +238,17 @@ clusterExport(cl, c("kernel_lambda", "kernel_K", "estimate_conditional_cdf",
 param_grid <- expand.grid(
   n = c(50, 100, 200),
   error_dist = c("Normal", "Laplace"),
-  alpha = c(0.05, 0.10),
   stringsAsFactors = FALSE
 )
 
 
 # --- Run All Simulations ---
 all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
+  print(paste("Run setting n =",param_grid$n[i],"error_dist = ",param_grid$error_dist[i], sep = " "))
   run_simulation_parallel_DCP(
     n = param_grid$n[i],
     error_dist = param_grid$error_dist[i],
-    alpha = param_grid$alpha[i],
-    num_sims = 500, # Number of Monte Carlo simulations
+    num_sims = 5, # Number of Monte Carlo simulations
     burn_in = 500,
     S = 5000,
     B = 250,
@@ -242,13 +259,13 @@ all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
 # --- Stop Cluster ---
 stopCluster(cl)
 
-# --- Print Final Results ---
-cat("\nDCP Simulation Results:\n")
-print(kable(all_results %>%
-              mutate(
-                CVR = round(CVR, 3), 
-                LEN_mean = round(LEN_mean, 3),
-                LEN_sd = round(LEN_sd, 3)
-              ) %>%
-              arrange(error_dist, nominal_coverage, n),
-            format = "markdown"))
+# # --- Print Final Results ---
+# cat("\nDCP Simulation Results:\n")
+# print(kable(all_results %>%
+#               mutate(
+#                 CVR = round(CVR, 3), 
+#                 LEN_mean = round(LEN_mean, 3),
+#                 LEN_sd = round(LEN_sd, 3)
+#               ) %>%
+#               arrange(error_dist, nominal_coverage, n),
+#             format = "markdown"))

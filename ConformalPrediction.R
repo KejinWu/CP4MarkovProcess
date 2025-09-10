@@ -79,6 +79,12 @@ select_bandwidth_ks <- function(series, p,  h_grid) {
   h_grid[which.max(ks_p_values)]
 }
 
+
+# ANOTHER CHOICE to pick the badnwidth by npcdistbw function
+
+
+
+
 #-----------------------------------------------------------------------
 # 4. Main DCP Prediction Interval Function
 #-----------------------------------------------------------------------

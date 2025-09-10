@@ -139,8 +139,8 @@ dcp_prediction_interval <- function(x, p = 1, h_grid, alpha = 0.05) {
 # 5. Monte Carlo Simulation Driver (CORRECTED)
 #-----------------------------------------------------------------------
 
-run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
-                                    alpha = 0.05, num_sims = 50, burn_in = 500, B = 250,  p = 1) {
+run_simulation_parallel_DCP <- function(n, error_dist = c("Normal", "Laplace"),
+                                    alpha = 0.05, num_sims = 50, S = 5000, burn_in = 500, B = 250,  p = 1) {
   error_dist <- match.arg(error_dist)
   
   # The foreach loop returns a data frame with all raw results
@@ -166,9 +166,9 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
     
     # --- Generate the single true next value to check coverage against ---
     true_error <- if (error_dist == "Normal") {
-      rnorm(B)
+      rnorm(S)
     } else {
-      VGAM::rlaplace(B, location = 0, scale = 1 / sqrt(2))
+      VGAM::rlaplace(S, location = 0, scale = 1 / sqrt(2))
     }
     x_true_next <- sin(x[total_len]) + true_error
     
@@ -227,12 +227,13 @@ param_grid <- expand.grid(
 
 # --- Run All Simulations ---
 all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
-  run_simulation_parallel(
+  run_simulation_parallel_DCP(
     n = param_grid$n[i],
     error_dist = param_grid$error_dist[i],
     alpha = param_grid$alpha[i],
     num_sims = 500, # Number of Monte Carlo simulations
     burn_in = 500,
+    S = 5000,
     B = 250,
     p = 1
   )

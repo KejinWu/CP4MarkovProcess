@@ -46,17 +46,24 @@ draw_consecutive <- function(x, p) {
   x[start:(start + p - 1)]
 }
 
+
+# x_train is Y_{p+1}
+# y_train is Y_{1,2,3..p} and so on.
 make_train_xy <- function(x, p) {
   n <- length(x)
   if (n <= p) stop("Time series is too short for the specified order p.")
   x_train <- x[(p + 1):n]
-  y_train <- embed(x, p + 1)[, -1, drop = FALSE]
+  y_train <- embed(x, p + 1)[, -1, drop = FALSE] # Read the y_train from the first row to the second row and so on
   list(x_train = x_train, y_train = y_train)
 }
+
 
 compute_weights <- function(y_cond, y_train, h) {
   kernel_K((y_cond - y_train)/h)
 }
+
+# y_cond is the p continuing predictor of the time series
+# u is value of the p+1 index of the time series
 
 estimate_conditional_cdf <- function(u, y_cond, x_train, y_train, h, h0) {
   weights <- compute_weights(y_cond, y_train, h)
@@ -68,7 +75,7 @@ estimate_conditional_cdf <- function(u, y_cond, x_train, y_train, h, h0) {
 
 inverse_conditional_cdf <- function(q, y_cond, x_train, y_train, h, h0) {
   cdf_minus_q <- function(x_val) {
-    estimate_conditional_cdf(x_val, y_cond, x_train, y_train, h, h0) - q
+    estimate_conditional_cdf(x_val, y_cond, x_train, y_train, h, h0) - q # minus q so that later we can solve to get tthe quantile
   }
   rng <- range(x_train)
   pad <- 3 * sd(x_train)
@@ -103,11 +110,11 @@ compute_transformed_v <- function(x, p, h, h0) {
 # 4. Main SMF Bootstrap Function
 #-----------------------------------------------------------------------
 
-smf_bootstrap_interval <- function(x, p = 1, h, B = 250, alpha = 0.05, M = NULL) {
+smf_bootstrap_interval <- function(x, h, h_0, p = 1, B = 250, alpha = 0.05, M = NULL) {
   n <- length(x)
   if (n <= p + 1) stop("Time series is too short.")
   if (is.null(M)) M <- max(p, floor(0.5 * n))
-  h0 <- h^2
+  #h0 <- h^2
   original_training_data <- make_train_xy(x, p)
   x_train <- original_training_data$x_train
   y_train <- original_training_data$y_train
@@ -152,8 +159,15 @@ smf_bootstrap_interval <- function(x, p = 1, h, B = 250, alpha = 0.05, M = NULL)
 # 5. Monte Carlo Simulation Driver
 #-----------------------------------------------------------------------
 
-run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
-                                    alpha = 0.05, num_sims = 50, burn_in = 500, B = 250, p = 1, M = NULL) {
+#' @param num_sims the number of simulations we want to replicate
+#' @param B the number of bootstrap we take to do predictions
+#' @param S the number of future values we generate to evaluate the coverage
+#' @param M the burn in for MF prediction approach
+#' @param p the order of the time series model
+
+
+run_simulation_parallel_MF <- function(n, error_dist = c("Normal", "Laplace"),
+                                    alpha = 0.05, num_sims = 50, burn_in = 500, S = 5000, B = 250, p = 1, M = NULL) {
   error_dist <- match.arg(error_dist)
   
   # The foreach loop now returns a data frame with all raw results
@@ -175,19 +189,31 @@ run_simulation_parallel <- function(n, error_dist = c("Normal", "Laplace"),
       x[t] <- sin(x[t - 1]) + eps[t]
     }
     
-    x_train <- x[(burn_in + 1):total_len]
+    all_x <- x[(burn_in + 1):total_len]
     
     # --- Generate the single true next value to check coverage against ---
     true_error <- if (error_dist == "Normal") {
-      rnorm(B)
+      rnorm(S)
     } else {
-      VGAM::rlaplace(B, location = 0, scale = 1 / sqrt(2))
+      VGAM::rlaplace(S, location = 0, scale = 1 / sqrt(2))
     }
     x_true_next <- sin(x[total_len]) + true_error
     
-    h <- 1.06 * sd(x_train) * n^(-1/5)
+    # h <- 1.06 * sd(x_train) * n^(-1/5)
     
-    result <- try(smf_bootstrap_interval(x_train, p, h, B, alpha, M), silent = TRUE)
+    # NOTE can only work for markov(1) process for this moment
+    # We use default setting to find the optimal bandwidth for x_train-- h_cv_ls$ybw and y_train--h_cv_ls$xbw
+    # Since we treat x_train as Y 
+    original_training_data <- make_train_xy(all_x, p)
+    x_train <- original_training_data$x_train
+    y_train <- original_training_data$y_train
+    data <- data.frame(x_train, y_train)
+    h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
+    h_x = h_cv_ls$ybw
+    h_y = h_cv_ls$xbw   # NOTE we define x as y; SO ybw is corresponding with h_x i.e., h
+    # Select the bandwidth by cv.ls
+    
+    result <- try(smf_bootstrap_interval(all_x, p, h = h_x, h_0 = h_y, B = B, alpha, M = M), silent = TRUE)
     
     if (inherits(result, "try-error")) {
       data.frame(covered = NA, interval_length = NA)
@@ -234,13 +260,14 @@ param_grid <- expand.grid(
 
 # The lapply call remains the same, as the new calculations are inside the function
 all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
-  run_simulation_parallel(
+  run_simulation_parallel_MF(
     n = param_grid$n[i],
     error_dist = param_grid$error_dist[i],
     alpha = param_grid$alpha[i],
     num_sims = 500,
     burn_in = 500,
     B = 250,
+    S = 5000,
     p = 1,
     M = floor(param_grid$n[i] / 2)
   )

@@ -12,6 +12,7 @@ if (!require("dplyr")) install.packages("dplyr")
 if (!require("knitr")) install.packages("knitr")
 if (!require("doParallel")) install.packages("doParallel")
 if (!require("foreach")) install.packages("foreach")
+if (!require("np")) install.packages("np")
 
 suppressPackageStartupMessages({
   library(VGAM)
@@ -111,14 +112,11 @@ select_bandwidth_cvls <- function(series, p) {
 # 4. Main DCP Prediction Interval Function
 #-----------------------------------------------------------------------
 
-dcp_prediction_interval <- function(x, p = 1, h_grid) {
+dcp_prediction_interval <- function(x, p = 1) {
   
   n <- length(x)
   
   # --- Optimized Bandwidth Selection (done once) ---
-  #h_sel <- select_bandwidth_ks(x, p, h_grid)
-  #h0_sel <- h_sel^2
-  
   h_cvls <- select_bandwidth_cvls(x, p) #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!########################
   h_sel <- h_cvls$h_x
   h0_sel <- h_cvls$h_y
@@ -127,9 +125,7 @@ dcp_prediction_interval <- function(x, p = 1, h_grid) {
   # --- Candidate Grid for the next value ---
   # Heuristic grid centered around a simple forecast
   last_val <- x[n]
-  #forecast_center <- sin(last_val) #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!########################
-  #ytrial <- seq(forecast_center - 4, forecast_center + 4, length.out = 100)
-  ytrial <- seq(min(x), max(x), length.out = 100)
+  ytrial <- seq(-max(abs(x)), max(abs(x)), length.out = 100)
   
   yconfidence_90 <- c()
   yconfidence_95 <- c()
@@ -142,7 +138,7 @@ dcp_prediction_interval <- function(x, p = 1, h_grid) {
     v_stats <- vapply((p+1):n_aug, function(t) {
       estimate_conditional_cdf(
         x_val = x_aug[t], 
-        y_cond = x_aug[t - p], #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!######################## 
+        y_cond = x_aug[(t - p):(t-1)], #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!######################## 
                                # For p = 1, it is fine. If we want to consider order p > 1, it is not appropriate, we should use x_aug[(t - p):(t-1)]
         h = h_sel, 
         series = x_aug, 
@@ -220,11 +216,8 @@ run_simulation_parallel_DCP <- function(n, error_dist = c("Normal", "Laplace"),
     }
     x_true_next <- sin(x[total_len]) + true_error
     
-    # Heuristic bandwidth grid
-    h_grid <- seq(0.1, 1.5, length.out = 50) 
-    
     # --- Get Prediction Interval ---
-    interval <- try(dcp_prediction_interval(x_train, p, h_grid), silent = TRUE)
+    interval <- try(dcp_prediction_interval(x_train, p), silent = TRUE)
     
     # --- Record Results ---
     if (inherits(interval, "try-error") || is.na(interval$lower_90)) {

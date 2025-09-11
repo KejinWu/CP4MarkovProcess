@@ -19,6 +19,7 @@ suppressPackageStartupMessages({
   library(knitr)
   library(doParallel)
   library(foreach)
+  library(np)
 })
 
 #-----------------------------------------------------------------------
@@ -35,6 +36,16 @@ kernel_lambda <- function(x) {
 kernel_K <- function(u) {
   dnorm(u)
 }
+
+# Make the train data to fit the local constant estimator for conditional CDF
+make_train_xy <- function(x, p) {
+  n <- length(x)
+  if (n <= p) stop("Time series is too short for the specified order p.")
+  x_train <- x[(p + 1):n]
+  y_train <- embed(x, p + 1)[, -1, drop = FALSE] # Read the y_train from the first row to the second row and so on
+  list(x_train = x_train, y_train = y_train)
+}
+
 
 # Conditional CDF estimator: F̂(x | y) for Markov(p=1)
 estimate_conditional_cdf <- function(x_val, y_cond, h, series, h0 = h^2) {
@@ -83,7 +94,18 @@ select_bandwidth_ks <- function(series, p,  h_grid) {
 # ANOTHER CHOICE to pick the badnwidth by npcdistbw function
 
 
-
+select_bandwidth_cvls <- function(series, p) {
+  
+  original_training_data <- make_train_xy(series, p)
+  x_train <- original_training_data$x_train
+  y_train <- original_training_data$y_train
+  data <- data.frame(x_train, y_train)
+  h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
+  h_x = h_cv_ls$ybw # since we treat x as the Y_{p+1} and y as Y_{p}
+  h_y = h_cv_ls$xbw  
+  
+  return(list(h_x = h_x, h_y = h_y))
+}
 
 #-----------------------------------------------------------------------
 # 4. Main DCP Prediction Interval Function
@@ -94,14 +116,20 @@ dcp_prediction_interval <- function(x, p = 1, h_grid) {
   n <- length(x)
   
   # --- Optimized Bandwidth Selection (done once) ---
-  h_sel <- select_bandwidth_ks(x, p, h_grid)
-  h0_sel <- h_sel^2
+  #h_sel <- select_bandwidth_ks(x, p, h_grid)
+  #h0_sel <- h_sel^2
+  
+  h_cvls <- select_bandwidth_cvls(x, p) #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!########################
+  h_sel <- h_cvls$h_x
+  h0_sel <- h_cvls$h_y
+  
   
   # --- Candidate Grid for the next value ---
   # Heuristic grid centered around a simple forecast
   last_val <- x[n]
-  forecast_center <- sin(last_val)
-  ytrial <- seq(forecast_center - 4, forecast_center + 4, length.out = 100)
+  #forecast_center <- sin(last_val) #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!########################
+  #ytrial <- seq(forecast_center - 4, forecast_center + 4, length.out = 100)
+  ytrial <- seq(min(x), max(x), length.out = 100)
   
   yconfidence_90 <- c()
   yconfidence_95 <- c()
@@ -114,7 +142,8 @@ dcp_prediction_interval <- function(x, p = 1, h_grid) {
     v_stats <- vapply((p+1):n_aug, function(t) {
       estimate_conditional_cdf(
         x_val = x_aug[t], 
-        y_cond = x_aug[t - p], 
+        y_cond = x_aug[t - p], #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!######################## 
+                               # For p = 1, it is fine. If we want to consider order p > 1, it is not appropriate, we should use x_aug[(t - p):(t-1)]
         h = h_sel, 
         series = x_aug, 
         h0 = h0_sel
@@ -238,7 +267,7 @@ clusterEvalQ(cl, {
   library(VGAM) # Make sure VGAM is available on each worker for Laplace dist
 })
 clusterExport(cl, c("kernel_lambda", "kernel_K", "estimate_conditional_cdf", 
-                    "select_bandwidth_ks", "dcp_prediction_interval"))
+                    "select_bandwidth_ks", "dcp_prediction_interval", "npcdistbw", "make_train_xy","select_bandwidth_cvls"))
 
 # --- Define Simulation Parameters ---
 param_grid <- expand.grid(
@@ -249,7 +278,7 @@ param_grid <- expand.grid(
 
 
 # --- Run All Simulations ---
-all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
+all_results_DCP <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
   print(paste("Run setting n =",param_grid$n[i],"error_dist = ",param_grid$error_dist[i], sep = " "))
   run_simulation_parallel_DCP(
     n = param_grid$n[i],

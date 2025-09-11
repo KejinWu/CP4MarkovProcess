@@ -67,7 +67,7 @@ compute_weights <- function(y_cond, y_train, h) {
 # y_cond is the p continuing predictor of the time series
 # u is value of the p+1 index of the time series
 
-estimate_conditional_cdf <- function(u, y_cond, x_train, y_train, h, h0) {
+estimate_conditional_cdf_MF <- function(u, y_cond, x_train, y_train, h, h0) {
   weights <- compute_weights(y_cond, y_train, h)
   sum_weights <- mean(weights)
   if (sum_weights < 1e-12) return(mean(x_train <= u))
@@ -77,7 +77,7 @@ estimate_conditional_cdf <- function(u, y_cond, x_train, y_train, h, h0) {
 
 inverse_conditional_cdf <- function(q, y_cond, x_train, y_train, h, h0) {
   cdf_minus_q <- function(x_val) {
-    estimate_conditional_cdf(x_val, y_cond, x_train, y_train, h, h0) - q # minus q so that later we can solve to get tthe quantile
+    estimate_conditional_cdf_MF(x_val, y_cond, x_train, y_train, h, h0) - q # minus q so that later we can solve to get tthe quantile
   }
   rng <- range(x_train)
   pad <- 3 * sd(x_train)
@@ -99,7 +99,7 @@ compute_transformed_v <- function(x, p, h, h0) {
   v <- numeric(n - p)
   for (t in (p + 1):n) {
     y_cond <- y_train[t - p, ]
-    v[t - p] <- estimate_conditional_cdf(
+    v[t - p] <- estimate_conditional_cdf_MF(
       u = x[t], y_cond = y_cond,
       x_train = x_train, y_train = y_train,
       h = h, h0 = h0
@@ -217,7 +217,6 @@ run_simulation_parallel_MF <- function(n, error_dist = c("Normal", "Laplace"),
     h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
     h_x = h_cv_ls$ybw
     h_y = h_cv_ls$xbw   
-    print(h_y)
     # NOTE we define x as y; SO ybw is corresponding with h_x i.e., h
     # Select the bandwidth by cv.ls
     
@@ -259,7 +258,7 @@ cat(sprintf("Registered parallel backend with %d cores.\n", getDoParWorkers()))
 
 clusterExport(cl, c("smf_bootstrap_interval", "draw_consecutive",
                     "make_train_xy", "compute_weights",
-                    "estimate_conditional_cdf", "inverse_conditional_cdf",
+                    "estimate_conditional_cdf_MF", "inverse_conditional_cdf",
                     "compute_transformed_v", "kernel_lambda", "kernel_K", "npcdistbw"),
               envir = environment())
 
@@ -272,7 +271,7 @@ param_grid <- expand.grid(
 
 
 # The lapply call remains the same, as the new calculations are inside the function
-all_results <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
+all_results_MF <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
   print(paste("Run setting n =",param_grid$n[i],"error_dist = ",param_grid$error_dist[i], sep = " "))
   run_simulation_parallel_MF(
     n = param_grid$n[i],

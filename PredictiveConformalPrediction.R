@@ -161,8 +161,8 @@ dcp_prediction_interval <- function(x, p = 1) {
       )
     }, numeric(1))
     
-    v_stats <- pmax(1e-6, pmin(1 - 1e-6, v_stats))
-    
+    #v_stats <- pmax(1e-6, pmin(1 - 1e-6, v_stats))
+    v_stats <- abs(v_stats - 1/2)
     # The v-statistic for the candidate point y
     v_new <- v_stats[n_aug - 1] 
     

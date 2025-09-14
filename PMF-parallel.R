@@ -290,7 +290,7 @@ param_grid <- expand.grid(
 # The lapply call remains the same, as the new calculations are inside the function
 all_results_MF <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
   print(paste("Run setting n =",param_grid$n[i],"error_dist = ",param_grid$error_dist[i], sep = " "))
-  run_simulation_parallel_MF(
+  run_simulation_parallel_PMF(
     n = param_grid$n[i],
     error_dist = param_grid$error_dist[i],
     num_sims = 5,

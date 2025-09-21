@@ -66,6 +66,13 @@ compute_weights <- function(y_cond, y_train, h) {
 
 # y_cond is the p continuing predictor of the time series
 # u is value of the p+1 index of the time series
+estimate_conditional_cdf_MF <- function(u, y_cond, x_train, y_train, h, h0) {
+  weights <- compute_weights(y_cond, y_train, h)
+  sum_weights <- mean(weights)
+  if (sum_weights < 1e-12) return(mean(x_train <= u))
+  numerator <- mean(weights * kernel_lambda((u - x_train) / h0))
+  numerator / sum_weights
+}
 
 estimate_conditional_cdf_PMF <- function(u, y_cond, x_train, y_train, h, h0, exclude_index) {
   m <- length(y_train)
@@ -87,9 +94,9 @@ estimate_conditional_cdf_PMF <- function(u, y_cond, x_train, y_train, h, h0, exc
   numerator / sum_weights
 }
 
-inverse_conditional_cdf <- function(q, y_cond, x_train, y_train, h, h0, exclude_index) {
+inverse_conditional_cdf <- function(q, y_cond, x_train, y_train, h, h0) {
   cdf_minus_q <- function(x_val) {
-    estimate_conditional_cdf_PMF(x_val, y_cond, x_train, y_train, h, h0, exclude_index) - q # minus q so that later we can solve to get tthe quantile
+    estimate_conditional_cdf_MF(x_val, y_cond, x_train, y_train, h, h0) - q # minus q so that later we can solve to get tthe quantile
   }
   rng <- range(x_train)
   pad <- 3 * sd(x_train)
@@ -134,11 +141,9 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   y_train <- original_training_data$y_train
   v <- compute_transformed_v(x, p, h, h0)
   y_last <- y_train[n - p, ]
-  x_tilde_n1 <- 0
-  for (t in (p+1):n){
-    x_tilde_n1 <- x_tilde_n1 + inverse_conditional_cdf(v[t-p], y_last, x_train, y_train, h, h0, t)
-  }
-  x_tilde_n1 <- x_tilde_n1 / (n-p)
+  x_tilde_n1 <- mean(vapply(v, function(q) {
+    inverse_conditional_cdf(q, y_last, x_train, y_train, h, h0)
+  }, numeric(1)))
   roots <- numeric(B)
   for (b in seq_len(B)) {
     v_star <- sample(v, size = (n - p + 1 + M), replace = TRUE)
@@ -148,7 +153,7 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
     for (t in (p + 1):total_len) {
       y_cond_star <- rev(x_star[(t - 1):(t - p)])
       q <- v_star[t - p]
-      x_star[t] <- inverse_conditional_cdf(q, y_cond_star, x_train, y_train, h, h0, t)
+      x_star[t] <- inverse_conditional_cdf(q, y_cond_star, x_train, y_train, h, h0)
     }
     x_star_train <- x_star[(M + 1):(M + n)]
     y_star_n1 <- x_star[M + n + 1]
@@ -157,12 +162,9 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
     y_train_star <- training_data_star$y_train
     v_train_star <- compute_transformed_v(x_star_train, p, h, h0)
     y_last_star <- y_train_star[n - p, ]
-    x_tilde_star_n1 <- 0
-    for (t in (p+1):n){
-      x_tilde_star_n1 <- x_tilde_star_n1 + inverse_conditional_cdf(v_train_star[M+1+t], y_last_star, x_train_star, y_train_star, h, h0, t)
-    }
-    
-    x_tilde_star_n1 <- x_tilde_star_n1 /(n-p)
+    x_tilde_star_n1 <- mean(vapply(v_train_star, function(q) {
+      inverse_conditional_cdf(q, y_last_star, x_train_star, y_train_star, h, h0)
+    }, numeric(1)))
     roots[b] <- y_star_n1 - x_tilde_star_n1
   }
   quantiles_90 <- quantile(roots, c(0.1 / 2, 1 - 0.1 / 2), na.rm = TRUE)
@@ -275,7 +277,7 @@ cat(sprintf("Registered parallel backend with %d cores.\n", getDoParWorkers()))
 
 clusterExport(cl, c("smf_bootstrap_interval", "draw_consecutive",
                     "make_train_xy", "compute_weights",
-                    "estimate_conditional_cdf_PMF", "inverse_conditional_cdf",
+                    "estimate_conditional_cdf_PMF", "estimate_conditional_cdf_MF","inverse_conditional_cdf",
                     "compute_transformed_v", "kernel_lambda", "kernel_K", "npcdistbw"),
               envir = environment())
 

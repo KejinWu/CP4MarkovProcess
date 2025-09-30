@@ -185,9 +185,9 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
     x_train_star <- training_data_star$x_train
     y_train_star <- training_data_star$y_train
     v_train_star <- compute_transformed_v_MF(x_star_train, p, h, h0)
-    y_last_star <- y_train_star[n - p, ]
+    y_last_n <- x[(n-p+1):n]
     x_tilde_star_n1 <- mean(vapply(v_train_star, function(q) {
-      inverse_conditional_cdf(q, y_last_star, x_train_star, y_train_star, h, h0)
+      inverse_conditional_cdf(q, y_last_n, x_train_star, y_train_star, h, h0)
     }, numeric(1)))
     roots[b] <- y_star_n1 - x_tilde_star_n1
   }

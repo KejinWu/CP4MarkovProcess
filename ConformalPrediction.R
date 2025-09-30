@@ -201,7 +201,7 @@ run_simulation_parallel_DCP <- function(n, error_dist = c("Normal", "Laplace"),
     }
     
     x <- numeric(total_len)
-    x[1] <- rnorm(1)
+    x[1] <- 0
     for (t in 2:total_len) {
       x[t] <- sin(x[t - 1]) + eps[t]
     }

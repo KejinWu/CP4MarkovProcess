@@ -263,7 +263,7 @@ clusterExport(cl, c("smf_bootstrap_interval", "draw_consecutive",
 param_grid <- expand.grid(
   n = c(50, 100, 200), # Expanded for better comparison
   error_dist = c("Normal", "Laplace"),
-  #alpha = c(0.05, 0.1),
+  alpha = c(0.05, 0.1),
   stringsAsFactors = FALSE
 )
 

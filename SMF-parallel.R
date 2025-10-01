@@ -98,9 +98,8 @@ compute_transformed_v <- function(x, p, h, h0) {
   y_train <- training_data$y_train
   v <- numeric(n - p)
   for (t in (p + 1):n) {
-    y_cond <- y_train[t - p, ]
     v[t - p] <- estimate_conditional_cdf_MF(
-      u = x[t], y_cond = y_cond,
+      u = x_train[t - p], y_cond = y_train[(t - p), ],
       x_train = x_train, y_train = y_train,
       h = h, h0 = h0
     )
@@ -116,37 +115,36 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   n <- length(x)
   if (n <= p + 1) stop("Time series is too short.")
   if (is.null(M)) M <- max(p, floor(0.5 * n))
-  #h0 <- h^2
   original_training_data <- make_train_xy(x, p)
   x_train <- original_training_data$x_train
   y_train <- original_training_data$y_train
   v <- compute_transformed_v(x, p, h, h0)
-  y_last <- y_train[n - p, ]
-  x_tilde_n1 <- mean(vapply(v, function(q) {
-    inverse_conditional_cdf(q, y_last, x_train, y_train, h, h0)
+  y_test <- x[n:(n-p+1)]
+  #y_last <- y_train[n - p, ]
+  x_hat_n_1 <- mean(vapply(v, function(q) {
+    inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
   }, numeric(1)))
   roots <- numeric(B)
   for (b in seq_len(B)) {
-    v_star <- sample(v, size = (n - p + 1 + M), replace = TRUE)
-    total_len <- n + 1 + M
+    total_len <- (M+1) + (n+1)
+    v_star <- sample(v, size = total_len, replace = TRUE)
     x_star <- numeric(total_len)
     x_star[1:p] <- draw_consecutive(x, p)
-    for (t in (p + 1):total_len) {
-      y_cond_star <- rev(x_star[(t - 1):(t - p)])
-      q <- v_star[t - p]
-      x_star[t] <- inverse_conditional_cdf(q, y_cond_star, x_train, y_train, h, h0)
+    for (t in (p + 1): (total_len - 1)) {
+      y_cond_star <- x_star[(t - 1):(t - p)]
+      x_star[t] <- inverse_conditional_cdf(v_star[t], y_cond_star, x_train, y_train, h, h0)
     }
-    x_star_train <- x_star[(M + 1):(M + n)]
-    y_star_n1 <- x_star[M + n + 1]
+    y_test <- x[n:(n-p+1)]
+    x_star[total_len] <- inverse_conditional_cdf(v_star[total_len], y_test, x_train, y_train, h, h0)
+    
+    x_star_train <- x_star[(total_len - n):(total_len - 1)]
     training_data_star <- make_train_xy(x_star_train, p)
-    x_train_star <- training_data_star$x_train
-    y_train_star <- training_data_star$y_train
-    v_train_star <- compute_transformed_v(x_star_train, p, h, h0)
-    y_last_n <- x[(n-p+1):n]
-    x_tilde_star_n1 <- mean(vapply(v_train_star, function(q) {
-      inverse_conditional_cdf(q, y_last_n, x_train_star, y_train_star, h, h0)
+    x_star_train <- training_data_star$x_train
+    y_star_train <- training_data_star$y_train
+    x_hat_star <- mean(vapply(v_star[(total_len - n + p):(total_len - 1)], function(q){
+      inverse_conditional_cdf(q, y_test, x_star_train, y_star_train, h, h0)
     }, numeric(1)))
-    roots[b] <- y_star_n1 - x_tilde_star_n1
+    roots[b] <- x_star[total_len] - x_hat_star
   }
   quantiles_90 <- quantile(roots, c(0.1 / 2, 1 - 0.1 / 2), na.rm = TRUE)
   quantiles_95 <- quantile(roots, c(0.05 / 2, 1 - 0.05 / 2), na.rm = TRUE)

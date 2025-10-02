@@ -150,11 +150,11 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   quantiles_95 <- quantile(roots, c(0.05 / 2, 1 - 0.05 / 2), na.rm = TRUE)
   
   list(
-    lower_90 = x_tilde_n1 + quantiles_90[1],
-    upper_90 = x_tilde_n1 + quantiles_90[2],
-    lower_95 = x_tilde_n1 + quantiles_95[1],
-    upper_95 = x_tilde_n1 + quantiles_95[2],
-    x_tilde = x_tilde_n1,
+    lower_90 = x_hat_n_1 + quantiles_90[1],
+    upper_90 = x_hat_n_1 + quantiles_90[2],
+    lower_95 = x_hat_n_1 + quantiles_95[1],
+    upper_95 = x_hat_n_1 + quantiles_95[2],
+    x_tilde = x_hat_n_1,
     roots = roots
   )
 }

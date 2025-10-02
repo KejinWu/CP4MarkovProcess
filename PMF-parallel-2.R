@@ -74,26 +74,6 @@ estimate_conditional_cdf_MF <- function(u, y_cond, x_train, y_train, h, h0) {
   numerator / sum_weights
 }
 
-estimate_conditional_cdf_PMF <- function(u, y_cond, x_train, y_train, h, h0, exclude_index) {
-  m <- length(y_train)
-  p <- 1
-  
-  indices_to_keep <- 1:(m-p)
-  loo_pair_index <- exclude_index - p
-  if (loo_pair_index > 0 && loo_pair_index <= m-p) {
-    indices_to_keep <- indices_to_keep[-loo_pair_index]
-  }
-  
-  x_train <- x_train[indices_to_keep]
-  y_train <- y_train[indices_to_keep]
-  
-  weights <- compute_weights(y_cond, y_train, h)
-  sum_weights <- mean(weights)
-  if (sum_weights < 1e-12) return(mean(x_train <= u))
-  numerator <- mean(weights * kernel_lambda((u - x_train) / h0))
-  numerator / sum_weights
-}
-
 inverse_conditional_cdf <- function(q, y_cond, x_train, y_train, h, h0) {
   cdf_minus_q <- function(x_val) {
     estimate_conditional_cdf_MF(x_val, y_cond, x_train, y_train, h, h0) - q # minus q so that later we can solve to get tthe quantile
@@ -110,6 +90,32 @@ inverse_conditional_cdf <- function(q, y_cond, x_train, y_train, h, h0) {
   }
 }
 
+estimate_conditional_cdf_PMF <- function(u, y_cond, x_train, y_train, h, h0, exclude_index) {
+  # n <- length(y_train)
+  # p <- 1
+  # 
+  # indices_to_keep <- 1:(m-p)
+  # loo_pair_index <- exclude_index - p
+  # if (loo_pair_index > 0 && loo_pair_index <= m-p) {
+  #   indices_to_keep <- indices_to_keep[-loo_pair_index]
+  # }
+  # 
+  n <- sum(dim(y_train))
+  p <- dim(y_train)[2]
+  index_loo <- 1:(n - p)
+  index_loo <- index_loo[-(exclude_index - p)]
+  x_train <- x_train[index_loo]
+  y_train <- y_train[index_loo]
+  
+  weights <- compute_weights(y_cond, y_train, h)
+  sum_weights <- mean(weights)
+  if (sum_weights < 1e-12) return(mean(x_train <= u))
+  numerator <- mean(weights * kernel_lambda((u - x_train) / h0))
+  numerator / sum_weights
+}
+
+
+
 compute_transformed_v_PMF <- function(x, p, h, h0) {
   n <- length(x)
   training_data <- make_train_xy(x, p)
@@ -119,7 +125,7 @@ compute_transformed_v_PMF <- function(x, p, h, h0) {
   for (t in (p + 1):n) {
     y_cond <- y_train[t - p, ]
     v[t - p] <- estimate_conditional_cdf_PMF(
-      u = x[t], y_cond = y_cond,
+      u = x_train[t-p], y_cond = y_train[(t-p), ],
       x_train = x_train, y_train = y_train,
       h = h, h0 = h0, exclude_index = t
     )
@@ -159,17 +165,16 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   x_train <- original_training_data$x_train
   y_train <- original_training_data$y_train
   v_P <- compute_transformed_v_PMF(x, p, h, h0) # The predictive residuals ONLY USED to generate Y star, i.e., y_star_n1 in this code
-  v <- compute_transformed_v_MF(x, p, h, h0) # The residuals
+  #v <- compute_transformed_v_MF(x, p, h, h0) # The residuals
   
   y_test <- x[n:(n-p+1)]
-  #y_last <- y_train[n - p, ]
-  x_hat_n_1 <- mean(vapply(v, function(q) {
+  x_hat_n_1 <- mean(vapply(v_P, function(q) {
     inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
   }, numeric(1)))
   roots <- numeric(B)
   for (b in seq_len(B)) {
     total_len <- (M+1) + (n+1)
-    v_star <- sample(v, size = total_len, replace = TRUE)
+    v_star <- sample(v_P, size = total_len, replace = TRUE)
     x_star <- numeric(total_len)
     x_star[1:p] <- draw_consecutive(x, p)
     for (t in (p + 1): (total_len - 1)) {
@@ -177,8 +182,8 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
       x_star[t] <- inverse_conditional_cdf(v_star[t], y_cond_star, x_train, y_train, h, h0)
     }
     y_test <- x[n:(n-p+1)]
-    v_star_p <- sample(v, size = 1, replace = TRUE)
-    x_star[total_len] <- inverse_conditional_cdf(v_star_p, y_test, x_train, y_train, h, h0)
+    # v_star_p <- sample(v, size = 1, replace = TRUE)
+    x_star[total_len] <- inverse_conditional_cdf(v_star[total_len], y_test, x_train, y_train, h, h0)
     
     x_star_train <- x_star[(total_len - n):(total_len - 1)]
     training_data_star <- make_train_xy(x_star_train, p)

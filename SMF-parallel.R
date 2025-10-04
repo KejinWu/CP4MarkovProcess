@@ -120,7 +120,6 @@ smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   y_train <- original_training_data$y_train
   v <- compute_transformed_v(x, p, h, h0)
   y_test <- x[n:(n-p+1)]
-  #y_last <- y_train[n - p, ]
   x_hat_n_1 <- mean(vapply(v, function(q) {
     inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
   }, numeric(1)))

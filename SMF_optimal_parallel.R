@@ -127,7 +127,7 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
     x_hat_n_1[i] <- vapply(v_q, function(q){
       inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
     }, numeric(1))
-  
+
   # x_hat_n_1 <- mean(vapply(v, function(q) {
   #   inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
   # }, numeric(1)))
@@ -137,7 +137,7 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   #   }, numeric(1))
 ###
 # length optimization depends on the q(1-alpha/2 + gamma ) - q(alpha/2 + gamma) only
-# does not depend on the "center" x_hat_n_1 
+# does not depend on the "center" x_hat_n_1
 # unless we use similar operations (find quantile) in Bootstrap
     roots <- numeric(B)
     for (b in seq_len(B)) {
@@ -151,7 +151,7 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
       }
       y_test <- x[n:(n-p+1)]
       x_star[total_len] <- inverse_conditional_cdf(v_star[total_len], y_test, x_train, y_train, h, h0)
-      
+
       x_star_train <- x_star[(total_len - n):(total_len - 1)]
       training_data_star <- make_train_xy(x_star_train, p)
       x_star_train <- training_data_star$x_train
@@ -160,16 +160,16 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
     #   inverse_conditional_cdf(q, y_test, x_star_train, y_star_train, h, h0)
     # }, numeric(1)))
       v_star_q <- quantile(v_star[(total_len - n + p):(total_len - 1)], beta[i])
-      x_hat_star <- vapply( v_star_q, function(q){
+      x_hat_star <- vapply(v_star_q, function(q){
         inverse_conditional_cdf(q, y_test, x_star_train, y_star_train, h, h0)
       }, numeric(1))
       roots[b] <- x_star[total_len] - x_hat_star
     }
-  
+
     grid <- seq(-0.1/2, 0.1/2, 20)
     grid2 <- seq(-0.05/2, 0.05/2, 20)
-    len_90 <- rep(0, length(grid))
-    len_95 <- rep(0, length(grid))
+    len_90 <- matrix(0, nrow = length(beta), ncol = length(grid))
+    len_95 <- matrix(0, nrow = length(beta), ncol = length(grid))
     for (j in 1:length(grid)){
       quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[j], 1 - 0.1 / 2 + grid[j]), na.rm = TRUE)
       quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[j], 1 - 0.05 / 2 + grid2[j]), na.rm = TRUE)
@@ -179,17 +179,17 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
     idx_90 <- which(len_90 == min(len_90, na.rm = TRUE), arr.ind = TRUE)
     row_90 <- idx_90[1, 1]
     col_90 <- idx_90[1, 2]
-    
+
     idx_95 <- which(len_95 == min(len_95, na.rm = TRUE), arr.ind = TRUE)
     row_95 <- idx_95[1, 1]
     col_95 <- idx_95[1, 2]
-    
+
     quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[col_90], 1 - 0.1 / 2 + grid[which.min(len_90)]), na.rm = TRUE)
     quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[col_95], 1 - 0.05 / 2 + grid2[which.min(len_95)]), na.rm = TRUE)
     x_hat_n_1_90 <- x_hat_n_1[row_90]
     x_hat_n_1_95 <- x_hat_n_1[row_95]
   }
-  
+
   list(
     lower_90 = x_hat_n_1_90 + quantiles_90[1],
     upper_90 = x_hat_n_1_90 + quantiles_90[2],
@@ -317,8 +317,8 @@ all_results_MF <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
     error_dist = param_grid$error_dist[i],
     num_sims = 5,
     burn_in = 500,
-    B = 250,
-    S = 5000,
+    B = 10,
+    S = 10,
     p = 1,
     M = floor(param_grid$n[i] / 2)
   )

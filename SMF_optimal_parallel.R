@@ -302,7 +302,7 @@ clusterExport(cl, c("smf_bootstrap_interval_optimal", "draw_consecutive",
               envir = environment())
 
 param_grid <- expand.grid(
-  n = c(50, 100, 200), # Expanded for better comparison
+  n = c(50, 100, 200, 500, 1000), # Expanded for better comparison
   error_dist = c("Normal", "Laplace"),
   alpha = c(0.05, 0.1),
   stringsAsFactors = FALSE
@@ -317,8 +317,8 @@ all_results_MF <- bind_rows(lapply(seq_len(nrow(param_grid)), function(i) {
     error_dist = param_grid$error_dist[i],
     num_sims = 5,
     burn_in = 500,
-    B = 10,
-    S = 10,
+    B = 250,
+    S = 5000,
     p = 1,
     M = floor(param_grid$n[i] / 2)
   )

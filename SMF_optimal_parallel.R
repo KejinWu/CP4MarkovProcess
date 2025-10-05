@@ -259,7 +259,7 @@ run_simulation_parallel_MF <- function(n, error_dist = c("Normal", "Laplace"),
     # NOTE we define x as y; SO ybw is corresponding with h_x i.e., h
     # Select the bandwidth by cv.ls
     
-    result <- try(smf_bootstrap_interval(all_x, p, h = h_x, h0 = h_y, B = B, M = M), silent = TRUE)
+    result <- try(smf_bootstrap_interval_optimal(all_x, p, h = h_x, h0 = h_y, B = B, M = M), silent = TRUE)
     
     if (inherits(result, "try-error")) {
       data.frame(covered = NA, interval_length = NA)
@@ -295,7 +295,7 @@ cl <- makeCluster(num_cores)
 registerDoParallel(cl)
 cat(sprintf("Registered parallel backend with %d cores.\n", getDoParWorkers()))
 
-clusterExport(cl, c("smf_bootstrap_interval", "draw_consecutive",
+clusterExport(cl, c("smf_bootstrap_interval_optimal", "draw_consecutive",
                     "make_train_xy", "compute_weights",
                     "estimate_conditional_cdf_MF", "inverse_conditional_cdf",
                     "compute_transformed_v", "kernel_lambda", "kernel_K", "npcdistbw"),

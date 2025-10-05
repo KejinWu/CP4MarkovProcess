@@ -120,60 +120,83 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   y_train <- original_training_data$y_train
   v <- compute_transformed_v(x, p, h, h0)
   y_test <- x[n:(n-p+1)]
+  beta <- seq(0.1, 0.9, 9)
+  x_hat_n_1 <- rep(0, length(beta))
+  for (i in 1:length(beta)){
+    v_q <- quantile(v, beta[i])
+    x_hat_n_1[i] <- vapply(v_q, function(q){
+      inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
+    }, numeric(1))
+  
   # x_hat_n_1 <- mean(vapply(v, function(q) {
   #   inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
   # }, numeric(1)))
-  v_q <- quantile(v, beta)
-  x_hat_n_1 <- vapply(v_q, function(q){
-      inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
-    }, numeric(1)))
+  # v_q <- quantile(v, beta)
+  # x_hat_n_1 <- vapply(v_q, function(q){
+  #     inverse_conditional_cdf(q, y_test, x_train, y_train, h, h0)
+  #   }, numeric(1))
 ###
 # length optimization depends on the q(1-alpha/2 + gamma ) - q(alpha/2 + gamma) only
 # does not depend on the "center" x_hat_n_1 
 # unless we use similar operations (find quantile) in Bootstrap
-  roots <- numeric(B)
-  for (b in seq_len(B)) {
-    total_len <- (M+1) + (n+1)
-    v_star <- sample(v, size = total_len, replace = TRUE)
-    x_star <- numeric(total_len)
-    x_star[1:p] <- draw_consecutive(x, p)
-    for (t in (p + 1): (total_len - 1)) {
-      y_cond_star <- x_star[(t - 1):(t - p)]
-      x_star[t] <- inverse_conditional_cdf(v_star[t], y_cond_star, x_train, y_train, h, h0)
+    roots <- numeric(B)
+    for (b in seq_len(B)) {
+      total_len <- (M+1) + (n+1)
+      v_star <- sample(v, size = total_len, replace = TRUE)
+      x_star <- numeric(total_len)
+      x_star[1:p] <- draw_consecutive(x, p)
+      for (t in (p + 1): (total_len - 1)) {
+        y_cond_star <- x_star[(t - 1):(t - p)]
+        x_star[t] <- inverse_conditional_cdf(v_star[t], y_cond_star, x_train, y_train, h, h0)
+      }
+      y_test <- x[n:(n-p+1)]
+      x_star[total_len] <- inverse_conditional_cdf(v_star[total_len], y_test, x_train, y_train, h, h0)
+      
+      x_star_train <- x_star[(total_len - n):(total_len - 1)]
+      training_data_star <- make_train_xy(x_star_train, p)
+      x_star_train <- training_data_star$x_train
+      y_star_train <- training_data_star$y_train
+    # x_hat_star <- mean(vapply(v_star[(total_len - n + p):(total_len - 1)], function(q){
+    #   inverse_conditional_cdf(q, y_test, x_star_train, y_star_train, h, h0)
+    # }, numeric(1)))
+      v_star_q <- quantile(v_star[(total_len - n + p):(total_len - 1)], beta[i])
+      x_hat_star <- vapply( v_star_q, function(q){
+        inverse_conditional_cdf(q, y_test, x_star_train, y_star_train, h, h0)
+      }, numeric(1))
+      roots[b] <- x_star[total_len] - x_hat_star
     }
-    y_test <- x[n:(n-p+1)]
-    x_star[total_len] <- inverse_conditional_cdf(v_star[total_len], y_test, x_train, y_train, h, h0)
-    
-    x_star_train <- x_star[(total_len - n):(total_len - 1)]
-    training_data_star <- make_train_xy(x_star_train, p)
-    x_star_train <- training_data_star$x_train
-    y_star_train <- training_data_star$y_train
-    x_hat_star <- mean(vapply(v_star[(total_len - n + p):(total_len - 1)], function(q){
-      inverse_conditional_cdf(q, y_test, x_star_train, y_star_train, h, h0)
-    }, numeric(1)))
-    roots[b] <- x_star[total_len] - x_hat_star
-  }
   
-  grid <- seq(-0.1/2, 0.1/2, 20)
-  grid2 <- seq(-0.05/2, 0.05/2, 20)
-  len_90 <- rep(0, length(grid))
-  len_95 <- rep(0, length(grid))
-  for (i in 1:length(grid)){
-    quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[i], 1 - 0.1 / 2 + grid[i]), na.rm = TRUE)
-    quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[i], 1 - 0.05 / 2 + grid2[i]), na.rm = TRUE)
-    len_90[i] <- quantiles_90[2] - quantiles_90[1]
-    len_95[i] <- quantiles_95[2] - quantiles_90[1]
+    grid <- seq(-0.1/2, 0.1/2, 20)
+    grid2 <- seq(-0.05/2, 0.05/2, 20)
+    len_90 <- rep(0, length(grid))
+    len_95 <- rep(0, length(grid))
+    for (j in 1:length(grid)){
+      quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[j], 1 - 0.1 / 2 + grid[j]), na.rm = TRUE)
+      quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[j], 1 - 0.05 / 2 + grid2[j]), na.rm = TRUE)
+      len_90[i, j] <- quantiles_90[2] - quantiles_90[1]
+      len_95[i, j] <- quantiles_95[2] - quantiles_90[1]
+    }
+    idx_90 <- which(len_90 == min(len_90, na.rm = TRUE), arr.ind = TRUE)
+    row_90 <- idx_90[1, 1]
+    col_90 <- idx_90[1, 2]
+    
+    idx_95 <- which(len_95 == min(len_95, na.rm = TRUE), arr.ind = TRUE)
+    row_95 <- idx_95[1, 1]
+    col_95 <- idx_95[1, 2]
+    
+    quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[col_90], 1 - 0.1 / 2 + grid[which.min(len_90)]), na.rm = TRUE)
+    quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[col_95], 1 - 0.05 / 2 + grid2[which.min(len_95)]), na.rm = TRUE)
+    x_hat_n_1_90 <- x_hat_n_1[row_90]
+    x_hat_n_1_95 <- x_hat_n_1[row_95]
   }
-  quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[which.min(len_90)], 1 - 0.1 / 2 + grid[which.min(len_90)]), na.rm = TRUE)
-  quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[which.min(len_95)], 1 - 0.05 / 2 + grid2[which.min(len_95)]), na.rm = TRUE)
   
   list(
-    lower_90 = x_hat_n_1 + quantiles_90[1],
-    upper_90 = x_hat_n_1 + quantiles_90[2],
-    lower_95 = x_hat_n_1 + quantiles_95[1],
-    upper_95 = x_hat_n_1 + quantiles_95[2],
-    x_tilde = x_hat_n_1,
-    roots = roots
+    lower_90 = x_hat_n_1_90 + quantiles_90[1],
+    upper_90 = x_hat_n_1_90 + quantiles_90[2],
+    lower_95 = x_hat_n_1_95 + quantiles_95[1],
+    upper_95 = x_hat_n_1_95 + quantiles_95[2]
+    # x_tilde = x_hat_n_1,
+    # roots = roots
   )
 }
 

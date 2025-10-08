@@ -174,7 +174,7 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
       quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[j], 1 - 0.1 / 2 + grid[j]), na.rm = TRUE)
       quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[j], 1 - 0.05 / 2 + grid2[j]), na.rm = TRUE)
       len_90[i, j] <- quantiles_90[2] - quantiles_90[1]
-      len_95[i, j] <- quantiles_95[2] - quantiles_90[1]
+      len_95[i, j] <- quantiles_95[2] - quantiles_95[1]
     }
     idx_90 <- which(len_90 == min(len_90, na.rm = TRUE), arr.ind = TRUE)
     row_90 <- idx_90[1, 1]
@@ -184,8 +184,8 @@ smf_bootstrap_interval_optimal <- function(x, h, h0, p = 1, B = 250, M = NULL) {
     row_95 <- idx_95[1, 1]
     col_95 <- idx_95[1, 2]
 
-    quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[col_90], 1 - 0.1 / 2 + grid[which.min(len_90)]), na.rm = TRUE)
-    quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[col_95], 1 - 0.05 / 2 + grid2[which.min(len_95)]), na.rm = TRUE)
+    quantiles_90 <- quantile(roots, c(0.1 / 2 + grid[col_90], 1 - 0.1 / 2 + grid[col_90]), na.rm = TRUE)
+    quantiles_95 <- quantile(roots, c(0.05 / 2 + grid2[col_95], 1 - 0.05 / 2 + grid2[col_95]), na.rm = TRUE)
     x_hat_n_1_90 <- x_hat_n_1[row_90]
     x_hat_n_1_95 <- x_hat_n_1[row_95]
   }
@@ -302,9 +302,9 @@ clusterExport(cl, c("smf_bootstrap_interval_optimal", "draw_consecutive",
               envir = environment())
 
 param_grid <- expand.grid(
-  n = c(50, 100, 200, 500, 1000), # Expanded for better comparison
+  n = c(50, 100), # Expanded for better comparison
   error_dist = c("Normal", "Laplace"),
-  alpha = c(0.05, 0.1),
+ # alpha = c(0.05, 0.1),
   stringsAsFactors = FALSE
 )
 

@@ -157,7 +157,7 @@ compute_transformed_v_MF <- function(x, p, h, h0) {
 
 
 
-smf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
+pmf_bootstrap_interval <- function(x, h, h0, p = 1, B = 250, M = NULL) {
   n <- length(x)
   if (n <= p + 1) stop("Time series is too short.")
   if (is.null(M)) M <- max(p, floor(0.5 * n))

@@ -126,7 +126,7 @@ select_bandwidth_cvls <- function(series, p) {
 # 4. Main DCP Prediction Interval Function
 #-----------------------------------------------------------------------
 
-dcp_prediction_interval <- function(x, p = 1) {
+pmdcp_prediction_interval <- function(x, p = 1) {
   
   n <- length(x)
   
@@ -164,7 +164,7 @@ dcp_prediction_interval <- function(x, p = 1) {
     #v_stats <- pmax(1e-6, pmin(1 - 1e-6, v_stats))
     v_stats <- abs(v_stats - 1/2)
     # The v-statistic for the candidate point y
-    v_new <- v_stats[n_aug - 1] 
+    v_new <- v_stats[n_aug -1] 
     
     # Calculate the one-sided p-value based on rank
     p_value <- mean(v_stats >= v_new)

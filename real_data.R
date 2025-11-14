@@ -123,12 +123,12 @@ for (t in train_n:(n - 1)) {
 }
 
 
-cvr_90 <- mean(covered_90_pmf)
-cvr_95 <- mean(covered_95_pmf)
+cvr_90_pmf <- mean(covered_90_pmf)
+cvr_95_pmf <- mean(covered_95_pmf)
 len_90_pmf <- mean(length_90_pmf)
 len_95_pmf <- mean(length_95_pmf)
-cat("Rolling 90% coverage:", round(cvr_90, 4), "\n")
-cat("Rolling 95% coverage:", round(cvr_95, 4), "\n")
+cat("Rolling 90% coverage:", round(cvr_90_pmf, 4), "\n")
+cat("Rolling 95% coverage:", round(cvr_95_pmf, 4), "\n")
 cat("Mean of 90% PI length:", round(len_90_pmf, 4), "\n")
 cat("Mean of 95% PI length:", round(len_95_pmf, 4), "\n")
 

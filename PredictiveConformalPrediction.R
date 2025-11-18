@@ -139,7 +139,7 @@ pmdcp_prediction_interval <- function(x, p = 1) {
   # --- Candidate Grid for the next value ---
   # Heuristic grid centered around a simple forecast
   last_val <- x[n]
-  ytrial <- seq(-max(abs(x)), max(abs(x)), length.out = 100)
+  ytrial <- seq(-max(abs(x)), max(abs(x)), length.out = 500)
   
   yconfidence_90 <- c()
   yconfidence_95 <- c()

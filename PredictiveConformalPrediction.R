@@ -49,7 +49,7 @@ make_train_xy <- function(x, p) {
 
 
 # Conditional CDF Estimator (Leave-One-Out Version)
-estimate_conditional_cdf <- function(x_val, y_cond, h, series, h0 = h^2, exclude_index) {
+estimate_conditional_cdf_pdmcp <- function(x_val, y_cond, h, series, h0 = h^2, exclude_index) {
   m <- length(series)
   p <- 1
   if (m < p + 1) stop("Series is too short for p=1.")
@@ -150,7 +150,7 @@ pmdcp_prediction_interval <- function(x, p = 1) {
     
     # Compute v-statistics for the augmented series using the pre-selected bandwidth
     v_stats <- vapply((p+1):n_aug, function(t) {
-      estimate_conditional_cdf(
+      estimate_conditional_cdf_pdmcp(
         x_val = x_aug[t], 
         y_cond = x_aug[(t - p):(t-1)], #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!######################## 
         # For p = 1, it is fine. If we want to consider order p > 1, it is not appropriate, we should use x_aug[(t - p):(t-1)]

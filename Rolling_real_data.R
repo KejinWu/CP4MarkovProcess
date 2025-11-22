@@ -12,7 +12,7 @@ plot(date[-1], x, type = "l", xlab = "Date", ylab = TeX("$\\Delta Y_t$"))
 dev.off() 
 
 n <- length(x)
-train_n  <- floor(0.9 * n)  
+train_n  <- floor(0.7 * n)  
 #train_n <- 83
 
 
@@ -260,3 +260,27 @@ legend("topleft",
        lty = c(1, 1,1,1,1),
        lwd = c(1, 1,1,1,1),
        cex = 0.5)
+
+
+pdf("rolling_plot.pdf", width = 8, height = 5)   # 8×5 英寸画布
+plot(ts(x[(train_n+1):(n)]), ylim = c(-2,2),
+     xlab = "Rolling prediction step",
+     ylab = "Value")
+lines(pmdcp_upper_90, col = "red", lty = 2)
+lines(pmdcp_lower_90, col = "red", lty = 2)
+lines(smf_upper_90, col = "blue", lty = 2)
+lines(smf_lower_90, col = "blue", lty = 2)
+lines(pmf_upper_90, col = "green", lty = 2)
+lines(pmf_lower_90, col = "green", lty = 2)
+lines(mdcp_upper_90, col = "yellow", lty = 2)
+lines(mdcp_lower_90, col = "yellow", lty = 2)
+
+
+
+legend("topleft",
+       legend = c("True", "PMDCP-90", "SMF-90", "PMF-90", "MDCP-90"),
+       col = c("black", "red", "blue","green","yellow"),
+       lty = c(1, 1,1,1,1),
+       lwd = c(1, 1,1,1,1),
+       cex = 0.5)
+dev.off()

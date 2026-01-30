@@ -52,17 +52,17 @@ make_train_xy <- function(x, p) {
 estimate_conditional_cdf <- function(x_val, y_cond, h, series, h0 = h^2) {
   m <- length(series)
   if (m < 2) stop("Series is too short for p=1.")
-  
+
   x_train <- series[2:m]
   y_train <- series[1:(m-1)]
-  
+
   weights <- kernel_K((y_cond - y_train) / h)
   sum_weights <- sum(weights)
-  
+
   if (!is.finite(sum_weights) || sum_weights < 1e-12) {
     return(mean(x_train <= x_val))
   }
-  
+
   numerator <- sum(weights * kernel_lambda((x_val - x_train) / h0))
   numerator / sum_weights
 }
@@ -71,23 +71,23 @@ estimate_conditional_cdf <- function(x_val, y_cond, h, series, h0 = h^2) {
 select_bandwidth_ks <- function(series, p,  h_grid) {
   m <- length(series)
   if (m < 3) stop("Series is too short for bandwidth selection.")
-  
+
   ks_p_values <- vapply(h_grid, function(h) {
     h0 <- h^2
     v <- numeric(m - p)
     for (t in (p+1):m) {
       v[t - p] <- estimate_conditional_cdf(
-        x_val = series[t], 
-        y_cond = series[t - p], 
-        h = h, 
-        series = series, 
+        x_val = series[t],
+        y_cond = series[t - p],
+        h = h,
+        series = series,
         h0 = h0
       )
     }
     v <- pmax(1e-6, pmin(1 - 1e-6, v)) # Stabilize for ks.test
     suppressWarnings(ks.test(v, "punif")$p.value)
   }, numeric(1))
-  
+
   h_grid[which.max(ks_p_values)]
 }
 
@@ -96,15 +96,16 @@ select_bandwidth_ks <- function(series, p,  h_grid) {
 
 
 select_bandwidth_cvls <- function(series, p) {
-  
+
   original_training_data <- make_train_xy(series, p)
   x_train <- original_training_data$x_train
   y_train <- original_training_data$y_train
   data <- data.frame(x_train, y_train)
-  h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
+  # h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
+  h_cv_ls = npcdistbw(xdat = y_train, ydat = x_train)
   h_x = h_cv_ls$ybw # since we treat x as the Y_{p+1} and y as Y_{p}
-  h_y = h_cv_ls$xbw  
-  
+  h_y = h_cv_ls$xbw
+
   return(list(h_x = h_x, h_y = h_y))
 }
 
@@ -113,47 +114,46 @@ select_bandwidth_cvls <- function(series, p) {
 #-----------------------------------------------------------------------
 
 dcp_prediction_interval <- function(x, p = 1) {
-  
+
   n <- length(x)
-  
+
   # --- Optimized Bandwidth Selection (done once) ---
   h_cvls <- select_bandwidth_cvls(x, p) #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!########################
   h_sel <- h_cvls$h_x
   h0_sel <- h_cvls$h_y
-  
-  
+
+
   # --- Candidate Grid for the next value ---
   # Heuristic grid centered around a simple forecast
   last_val <- x[n]
   ytrial <- seq(-max(abs(x)), max(abs(x)), length.out = 100)
-  
+
   yconfidence_90 <- c()
   yconfidence_95 <- c()
-  
+
   for (y in ytrial) {
     x_aug <- c(x, y)
     n_aug <- n + 1
-    
+
     # Compute v-statistics for the augmented series using the pre-selected bandwidth
     v_stats <- vapply((p+1):n_aug, function(t) {
       estimate_conditional_cdf(
-        x_val = x_aug[t], 
-        y_cond = x_aug[(t - p):(t-1)], #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!######################## 
-                               # For p = 1, it is fine. If we want to consider order p > 1, it is not appropriate, we should use x_aug[(t - p):(t-1)]
-        h = h_sel, 
-        series = x_aug, 
+        x_val = x_aug[t],
+        y_cond = x_aug[(t - p):(t-1)],
+        h = h_sel,
+        series = x_aug,
         h0 = h0_sel
       )
     }, numeric(1))
-    
+
     #v_stats <- pmax(1e-6, pmin(1 - 1e-6, v_stats))
     v_stats <- abs(v_stats - 1/2)
     # The v-statistic for the candidate point y
-    v_new <- v_stats[n_aug - 1] 
-    
+    v_new <- v_stats[n_aug - p]
+
     # Calculate the one-sided p-value based on rank
     p_value <- mean(v_stats >= v_new)
-    
+
     if (p_value > 0.05) {
       yconfidence_95 <- c(yconfidence_95, y)
     }
@@ -161,21 +161,21 @@ dcp_prediction_interval <- function(x, p = 1) {
       yconfidence_90 <- c(yconfidence_90, y)
     }
   }
-  
+
   if (length(yconfidence_95) > 0) {
     interval_95 <- range(yconfidence_95)
     list_95 = list(lower_95 = interval_95[1], upper_95 = interval_95[2])
   } else {
     list_95 = list(lower_95 = NA, upper_95 = NA)
   }
-  
+
   if (length(yconfidence_90) > 0) {
     interval_90 <- range(yconfidence_90)
     list_90 = list(lower_90 = interval_90[1], upper_90 = interval_90[2])
   } else {
     list_90 = list(lower_90 = NA, upper_90 = NA)
   }
-  
+
   return(c(list_90,list_95))
 }
 

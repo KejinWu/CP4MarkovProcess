@@ -30,16 +30,16 @@ mdcp_lower_95 <- c()
 mdcp_upper_90<- c()
 mdcp_lower_90 <- c()
 
-
+p <- 2 # p <- 1
 for (t in train_n:(n - 1)) {
   x_train <- x[(t-train_n+1):t]
-  interval <- dcp_prediction_interval(x_train)
+  interval <- dcp_prediction_interval(x_train, p)
 
   lower90 <- interval$lower_90
   upper90 <- interval$upper_90
   lower95 <- interval$lower_95
   upper95 <- interval$upper_95
-  
+
   mdcp_upper_95 <- c(mdcp_upper_95, upper95)
   mdcp_upper_90 <- c(mdcp_upper_90, upper90)
   mdcp_lower_95 <- c(mdcp_lower_95, lower95)
@@ -78,19 +78,22 @@ smf_upper_90<- c()
 smf_lower_90 <- c()
 
 x_center <- c()
+
 for (t in train_n:(n - 1)) {
   x_train <- x[(t-train_n+1):t]
   
-  original_training_data <- make_train_xy(x_train, 1)
+  original_training_data <- make_train_xy(x_train, p)
   x_train <- original_training_data$x_train
   y_train <- original_training_data$y_train
   data <- data.frame(x_train, y_train)
-  h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
-  h_x = h_cv_ls$ybw
+  # h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
+  # h_x = h_cv_ls$ybw
+  # h_y = h_cv_ls$xbw
+  h_cv_ls = npcdistbw(xdat = y_train, ydat = x_train)
+  h_x = h_cv_ls$ybw # since we treat x as the Y_{p+1} and y as Y_{p}
   h_y = h_cv_ls$xbw
   
   B = 250
-  p = 1
   M = NULL
   interval <- smf_bootstrap_interval(x[(t-train_n+1):t], p, h = h_x, h0 = h_y, B = B, M = M)
   
@@ -145,16 +148,15 @@ x_center_pmf <- c()
 for (t in train_n:(n - 1)) {
   x_train <- x[(t-train_n+1):t]
 
-  original_training_data <- make_train_xy(x_train, 1)
+  original_training_data <- make_train_xy(x_train, p)
   x_train <- original_training_data$x_train
   y_train <- original_training_data$y_train
   data <- data.frame(x_train, y_train)
-  h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
-  h_x = h_cv_ls$ybw
+  h_cv_ls = npcdistbw(xdat = y_train, ydat = x_train)
+  h_x = h_cv_ls$ybw # since we treat x as the Y_{p+1} and y as Y_{p}
   h_y = h_cv_ls$xbw
 
   B = 250
-  p = 1
   M = NULL
   interval <- pmf_bootstrap_interval(x[(t-train_n+1):t], p, h = h_x, h0 = h_y, B = B, M = M)
 
@@ -209,7 +211,7 @@ pmdcp_upper_90<- c()
 pmdcp_lower_90 <- c()
 for (t in train_n:(n - 1)) {
   x_train <- x[(t-train_n+1):t]
-  interval <- pmdcp_prediction_interval(x_train)
+  interval <- pmdcp_prediction_interval(x_train, p)
   
   lower90 <- interval$lower_90
   upper90 <- interval$upper_90

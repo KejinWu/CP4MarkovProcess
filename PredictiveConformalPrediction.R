@@ -49,33 +49,33 @@ make_train_xy <- function(x, p) {
 
 
 # Conditional CDF Estimator (Leave-One-Out Version)
-estimate_conditional_cdf_pdmcp <- function(x_val, y_cond, h, series, h0 = h^2, exclude_index) {
+estimate_conditional_cdf_pdmcp <- function(x_val, y_cond, p, h, series, h0 = h^2, exclude_index) {
   m <- length(series)
-  p <- 1
-  if (m < p + 1) stop("Series is too short for p=1.")
-  
+  # if (m < p + 1) stop("Series is too short for p=1.")
+
   indices_to_keep <- 1:(m-p)
-  
+
   loo_pair_index <- exclude_index - p
   if (loo_pair_index > 0 && loo_pair_index <= m-p) {
     indices_to_keep <- indices_to_keep[-loo_pair_index]
   }
-  
+
   # original training data
-  x_train <- series[2:m]
-  y_train <- series[1:(m-1)]
-  
+  x_train <- series[(p+1):m]
+  y_train <- embed(series, p + 1)[, -1]
+
+
   # leave-one-out training data
   x_train <- x_train[indices_to_keep]
-  y_train <- y_train[indices_to_keep]
-  
+  y_train <- y_train[indices_to_keep, , drop = FALSE]
+
   weights <- kernel_K((y_cond - y_train) / h)
   sum_weights <- sum(weights)
-  
+
   if (!is.finite(sum_weights) || sum_weights < 1e-12) {
     return(mean(x_train <= x_val))
   }
-  
+
   numerator <- sum(weights * kernel_lambda((x_val - x_train) / h0))
   numerator / sum_weights
 }
@@ -92,6 +92,7 @@ select_bandwidth_ks <- function(series, p,  h_grid) {
       v[t - p] <- estimate_conditional_cdf(
         x_val = series[t], 
         y_cond = series[t - p], 
+        p = p,
         h = h, 
         series = series, 
         h0 = h0,
@@ -115,9 +116,12 @@ select_bandwidth_cvls <- function(series, p) {
   x_train <- original_training_data$x_train
   y_train <- original_training_data$y_train
   data <- data.frame(x_train, y_train)
-  h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
+  # h_cv_ls = npcdistbw(formula = x_train ~ y_train, data)
+  # h_x = h_cv_ls$ybw # since we treat x as the Y_{p+1} and y as Y_{p}
+  # h_y = h_cv_ls$xbw
+  h_cv_ls = npcdistbw(xdat = y_train, ydat = x_train)
   h_x = h_cv_ls$ybw # since we treat x as the Y_{p+1} and y as Y_{p}
-  h_y = h_cv_ls$xbw  
+  h_y = h_cv_ls$xbw
   
   return(list(h_x = h_x, h_y = h_y))
 }
@@ -152,8 +156,7 @@ pmdcp_prediction_interval <- function(x, p = 1) {
     v_stats <- vapply((p+1):n_aug, function(t) {
       estimate_conditional_cdf_pdmcp(
         x_val = x_aug[t], 
-        y_cond = x_aug[(t - p):(t-1)], #############################!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!######################## 
-        # For p = 1, it is fine. If we want to consider order p > 1, it is not appropriate, we should use x_aug[(t - p):(t-1)]
+        y_cond = x_aug[(t - p):(t-1)], p = p,
         h = h_sel, 
         series = x_aug, 
         h0 = h0_sel,
@@ -164,7 +167,7 @@ pmdcp_prediction_interval <- function(x, p = 1) {
     #v_stats <- pmax(1e-6, pmin(1 - 1e-6, v_stats))
     v_stats <- abs(v_stats - 1/2)
     # The v-statistic for the candidate point y
-    v_new <- v_stats[n_aug -1] 
+    v_new <- v_stats[length(v_stats)] 
     
     # Calculate the one-sided p-value based on rank
     p_value <- mean(v_stats >= v_new)

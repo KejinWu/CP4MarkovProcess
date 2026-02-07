@@ -22,7 +22,7 @@ order_est = function(data, method, alpha = 0.05){
       
       for (t in train_n:(n - 1)) {
         x_train <- x[(t-train_n+1):t]
-        interval <- MDCP(x_train, p = p, alpha)
+        interval <- MDCP(x = x_train, p = p, alpha = alpha)
         
         lower <- interval$lower
         upper <- interval$upper
@@ -48,7 +48,7 @@ order_est = function(data, method, alpha = 0.05){
         
         for (t in train_n:(n - 1)) {
           x_train <- x[(t-train_n+1):t]
-          interval <- PDCP(x_train, p = p, alpha)
+          interval <- PDCP(x = x_train, p = p, alpha= alpha)
           
           lower <- interval$lower
           upper <- interval$upper
@@ -100,7 +100,7 @@ order_est = function(data, method, alpha = 0.05){
             
             for (t in train_n:(n - 1)) {
               x_train <- x[(t-train_n+1):t]
-              interval <- PMF(x_train, p = p, alpha)
+              interval <- PMF(x=x_train, p = p, alpha = alpha)
               
               lower <- interval$lower
               upper <- interval$upper

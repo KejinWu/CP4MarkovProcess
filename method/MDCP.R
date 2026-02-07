@@ -1,4 +1,4 @@
-source("utility.R")
+source("method/utility.R")
 
 MDCP<- function(x, p = 1, alpha = 0.05) {
   n <- length(x)

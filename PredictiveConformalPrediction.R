@@ -51,8 +51,7 @@ make_train_xy <- function(x, p) {
 # Conditional CDF Estimator (Leave-One-Out Version)
 estimate_conditional_cdf_pdmcp <- function(x_val, y_cond, p, h, series, h0 = h^2, exclude_index) {
   m <- length(series)
-  # if (m < p + 1) stop("Series is too short for p=1.")
-
+  if (m < p + 1) stop(paste("Series is too short for p =", p))
   indices_to_keep <- 1:(m-p)
 
   loo_pair_index <- exclude_index - p

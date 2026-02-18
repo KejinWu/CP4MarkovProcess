@@ -58,7 +58,7 @@ estimate_conditional_cdf <- function(x_val, y_cond, series, p, h, h0) {
   y_train <- embed(series,p+1)[, -1, drop = FALSE]
   weights <- compute_weights(y_cond, y_train, h)
   sum_weights <- mean(weights)
-  if (sum_weights < 1e-12) return(mean(x_train <= u))
+  if (sum_weights < 1e-12) return(mean(x_train <= x_val))
   numerator <- mean(weights * kernel_lambda((x_val - x_train) / h0))
   numerator / sum_weights
 }
@@ -96,11 +96,13 @@ estimate_conditional_cdf_loo <- function(x_val, y_cond, p, h, series, h0 = h^2, 
   # original training data
   x_train <- series[(p+1):m]
   y_train <- embed(series, p + 1)[, -1]
-  
+  y_train <- as.matrix(y_train)
   
   # leave-one-out training data
   x_train <- x_train[indices_to_keep]
+
   y_train <- y_train[indices_to_keep, , drop = FALSE]
+  
   
   weights <- kernel_K((y_cond - y_train) / h)
   sum_weights <- sum(weights)

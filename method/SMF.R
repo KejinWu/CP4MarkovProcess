@@ -1,4 +1,4 @@
-source("utility.R")
+source("method/utility.R")
 
 compute_transformed_v <- function(x, p, h, h0) {
   n <- length(x)
@@ -22,9 +22,6 @@ SMF <- function(x, p = 1, B = 250, M = NULL, alpha = 0.05) {
   n <- length(x)
   if (n <= p + 1) stop("Time series is too short.")
   if (is.null(M)) M <- max(p, floor(0.5 * n))
-  # original_training_data <- make_train_xy(x, p)
-  # x_train <- original_training_data$x_train
-  # y_train <- original_training_data$y_train
   
   # --- Optimized Bandwidth Selection (done once) ---
   h_cvls <- select_bandwidth_cvls(x, p)

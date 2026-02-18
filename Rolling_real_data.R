@@ -14,36 +14,30 @@ dev.off()
 n <- length(x)
 train_n  <- floor(0.7 * n)  
 #train_n <- 83
-
+alpha <- 0.05
 
 ############################################################
 ##### MDCP ##################################################
 ############################################################
+source("method/MDCP.R")
+covered <- logical(0)
+length <- c()
+mdcp_upper<- c()
+mdcp_lower<- c()
 
-covered_90 <- logical(0)
-covered_95 <- logical(0)
-length_90 <- c()
-length_95 <- c()
-
-mdcp_upper_95<- c()
-mdcp_lower_95 <- c()
-mdcp_upper_90<- c()
-mdcp_lower_90 <- c()
-
-p <- 2 # p <- 1
+p <- 4 # p <- 1
 for (t in train_n:(n - 1)) {
   x_train <- x[(t-train_n+1):t]
-  interval <- dcp_prediction_interval(x_train, p)
+  interval <- MDCP(x_train, p, alpha = alpha)
 
-  lower90 <- interval$lower_90
-  upper90 <- interval$upper_90
-  lower95 <- interval$lower_95
-  upper95 <- interval$upper_95
+  lower <- interval$lower
+  upper <- interval$upper
+  
 
-  mdcp_upper_95 <- c(mdcp_upper_95, upper95)
-  mdcp_upper_90 <- c(mdcp_upper_90, upper90)
-  mdcp_lower_95 <- c(mdcp_lower_95, lower95)
-  mdcp_lower_90 <- c(mdcp_lower_90, lower90)
+  mdcp_upper <- c(mdcp_upper, upper)
+  # mdcp_upper_90 <- c(mdcp_upper_90, upper90)
+  mdcp_lower <- c(mdcp_lower, lower)
+  # mdcp_lower_90 <- c(mdcp_lower_90, lower90)
 
   y_next <- x[t + 1]
   covered_90 <- c(covered_90, (y_next >= lower90 && y_next <= upper90))

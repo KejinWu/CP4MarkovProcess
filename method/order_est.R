@@ -1,10 +1,10 @@
-source("MDCP.R")
-source("PMDCP.R")
-source("SMF.R")
-source("PMF.R")
+source("method/MDCP.R")
+source("method/PMDCP.R")
+source("method/SMF.R")
+source("method/PMF.R")
 
 order_est = function(data, method, alpha = 0.05){
-  p_candidate = 1:5
+  p_candidate = 1:10 #1:10
   n = length(data)
   train_n = floor(n / 3) * 2
   valid_n = train_n / 2
@@ -48,7 +48,7 @@ order_est = function(data, method, alpha = 0.05){
         
         for (t in train_n:(n - 1)) {
           x_train <- x[(t-train_n+1):t]
-          interval <- PDCP(x = x_train, p = p, alpha= alpha)
+          interval <- PMDCP(x = x_train, p = p, alpha= alpha)
           
           lower <- interval$lower
           upper <- interval$upper
@@ -85,8 +85,9 @@ order_est = function(data, method, alpha = 0.05){
             y_next <- x[t + 1]
             cv <- c(cv, (y_next >= lower && y_next <= upper))
             length <- c(length, upper - lower)
+            # print(cv[(t-train_n+1)])
+            # print(length[(t-train_n+1)])
           }
-          
           cvr[p] <- mean(cv)
           len[p] <- mean(length)
         }

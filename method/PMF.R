@@ -1,4 +1,4 @@
-source("utility.R")
+source("method/utility.R")
 
 compute_transformed_v_PMF <- function(x, p, h, h0) {
   n <- length(x)
@@ -9,7 +9,7 @@ compute_transformed_v_PMF <- function(x, p, h, h0) {
   for (t in (p + 1):n) {
     y_cond <- y_train[t - p, ]
     v[t - p] <- estimate_conditional_cdf_loo(
-      u = x_train[t-p], y_cond = y_train[(t-p), ], p = p,
+      x_val = x_train[t-p], y_cond = y_train[(t-p), ], p = p,
       series = x,
       h = h, h0 = h0, exclude_index = t
     )
@@ -35,7 +35,7 @@ PMF <- function(x, p = 1, B = 250, M = NULL, alpha = 0.05) {
   
   y_test <- x[n:(n-p+1)]
   x_hat_n_1 <- mean(vapply(v_P, function(q) {
-    inverse_conditional_cdf(q, y_test, x,p, h, h0)
+    inverse_conditional_cdf(q, y_test, x, p, h, h0)
   }, numeric(1)))
   roots <- numeric(B)
   for (b in seq_len(B)) {
@@ -45,11 +45,11 @@ PMF <- function(x, p = 1, B = 250, M = NULL, alpha = 0.05) {
     x_star[1:p] <- draw_consecutive(x, p)
     for (t in (p + 1): (total_len - 1)) {
       y_cond_star <- x_star[(t - 1):(t - p)]
-      x_star[t] <- inverse_conditional_cdf(v_star[t], y_cond_star, x,p, h, h0)
+      x_star[t] <- inverse_conditional_cdf(v_star[t], y_cond_star, x, p, h, h0)
     }
     y_test <- x[n:(n-p+1)]
     # v_star_p <- sample(v, size = 1, replace = TRUE)
-    x_star[total_len] <- inverse_conditional_cdf(v_star[total_len], y_test, x,p, h, h0)
+    x_star[total_len] <- inverse_conditional_cdf(v_star[total_len], y_test, x, p, h, h0)
     
     x_star_train <- x_star[(total_len - n):(total_len - 1)]
     # training_data_star <- make_train_xy(x_star_train, p)

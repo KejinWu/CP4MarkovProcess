@@ -1,6 +1,6 @@
-source("utility.R")
+source("method/utility.R")
 
-PMDCP <- function(x, p = 1) {
+PMDCP <- function(x, p, alpha) {
   
   n <- length(x)
   
@@ -15,8 +15,8 @@ PMDCP <- function(x, p = 1) {
   last_val <- x[n]
   ytrial <- seq(-max(abs(x)), max(abs(x)), length.out = 500)
   
-  yconfidence_90 <- c()
-  yconfidence_95 <- c()
+  yconf <- c()
+
   
   for (y in ytrial) {
     x_aug <- c(x, y)

@@ -1,4 +1,10 @@
-.Rproj.user
-.Rhistory
-.RData
-.Ruserdata
+*
+!/.gitignore
+!/method/
+!/method/**
+!/real_data/
+!/real_data/**
+**/.DS_Store
+**/.Rhistory
+**/.RData
+**/.Ruserdata
